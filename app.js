@@ -447,7 +447,11 @@ try{
 syncMotion();
 let lastCommandCheck = 0;
 setInterval(()=>{ if(isVisible() && (!liveHealthy() || Date.now() - lastCommandCheck > SAFETY_POLL_MS)) checkCommands(); }, FALLBACK_POLL_MS);
-setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
+setInterval(()=>{
+  if(!isVisible()) return;
+  heartbeat();
+  if(state.account && ['receipts','transfers'].includes(state.view) && document.querySelector('[data-rr-slow]')) rrCheckNetwork();
+}, HEARTBEAT_MS);
 document.addEventListener('visibilitychange', ()=>{
   // Back from WhatsApp: an order whose suppliers are all sent is saved now if it wasn't yet.
   if(isVisible() && state.account){ checkCommands(); heartbeat(); maybeFinishQueue(); liveStart(); }
@@ -673,7 +677,7 @@ document.addEventListener('dblclick',event=>event.preventDefault(),{passive:fals
 function signOut(reason, {preserveSession = false} = {}){
   if(!preserveSession) postMacReport(null);
   recipeReset(); minibarReset(); rrReset(); tfReset();
-  stk.data = null; stk.failed = false;
+  stockReset();
   liveStop();
   if(state.account){
     // The kitchen's data does not stay on a signed-out phone (its orders and kept changes wait in the outbox).

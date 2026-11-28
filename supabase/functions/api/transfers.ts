@@ -16,6 +16,7 @@
 //   POST   helper/transfers/:id/report {status, log, problem, result}
 //   POST   helper/transfers/:id/photo  {kind, image}
 import "../_shared/transfers.js";
+import "../_shared/recipe-cost.js";
 import { BUCKET, catalogOf, helperRow, helperView, logEntry, nameOf, poll, waitFor } from "./receipts.ts";
 const T = (globalThis as any).RicottaTransfers;
 
@@ -131,6 +132,30 @@ export async function transferPhotoLinks(db: any, r: any, kinds?: string[]) {
   return out;
 }
 
+const purchaseInvoices = (db: any, columns: string) => db.from("app_rr_invoices").select(columns)
+  .order("entry_date", { ascending: false }).order("read_at", { ascending: false }).limit(3000);
+
+async function transferSuppliers(db: any){
+  const [catalog, invoices, receipts] = await Promise.all([
+    catalogOf(db),
+    purchaseInvoices(db, "supplier_name,lines"),
+    db.from("app_rr_receipts").select("supplier,lines").eq("status", "saved").order("saved_at", { ascending: false }).limit(1000),
+  ]);
+  if(invoices.error) throw invoices.error;
+  if(receipts.error) throw receipts.error;
+  const bySupplier = new Map<string, Set<string>>();
+  const add = (supplier: unknown, lines: unknown)=>{
+    if(typeof supplier !== "string" || !supplier.trim()) return;
+    const key = supplier.trim(), items = bySupplier.get(key) ?? new Set<string>();
+    if(Array.isArray(lines)) for(const line of lines) if(typeof line?.item === "string" && line.item) items.add(line.item);
+    bySupplier.set(key, items);
+  };
+  for(const name of Array.isArray(catalog.suppliers) ? catalog.suppliers : []) add(name, []);
+  for(const row of invoices.data ?? []) add(row.supplier_name, row.lines);
+  for(const row of receipts.data ?? []) add(row.supplier, row.lines);
+  return { suppliers: [...bySupplier].map(([name, items])=>({name, items:[...items]})) };
+}
+
 /* The Stock screen (read only): every item Ricotta Restaurant stocks, how much is in Main Storage (as
    Rico last read it), its usage, buying and counting units, and when it was last bought (a saved
    receipt) and last moved out (a moved transfer), from the last 60 days. Nothing here can be changed:
@@ -138,11 +163,12 @@ export async function transferPhotoLinks(db: any, r: any, kinds?: string[]) {
 export const MAIN_STORAGE = "Main Storage";
 export async function stockView(db: any) {
   const since = new Date(Date.now() - 60 * 86400_000).toISOString();
-  const [cat, recs, moves, h] = await Promise.all([
+  const [cat, recs, moves, h, invoices] = await Promise.all([
     catalogOf(db),
-    db.from("app_rr_receipts").select("supplier,currency,lines,saved_at").eq("status", "saved").gte("saved_at", since).order("saved_at", { ascending: false }).limit(800),
+    db.from("app_rr_receipts").select("supplier,currency,rate,lines,saved_at").eq("status", "saved").gte("saved_at", since).order("saved_at", { ascending: false }).limit(800),
     tt(db).select("from_zone,to_zone,lines,moved_at").eq("status", "moved").gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500),
     helperRow(db),
+    purchaseInvoices(db, "entry_date,read_at,invoice_number,supplier_name,currency,rate,total,delivery_fee,lines"),
   ]);
   if (recs.error) throw recs.error;
   if (moves.error) throw moves.error;
@@ -154,11 +180,23 @@ export async function stockView(db: any) {
     if (l?.item && !moved.has(l.item)) moved.set(l.item, { at: r.moved_at, from: r.from_zone, to: r.to_zone, qty: l.qty, unit: l.unit });
   }
   const c = cat as any;
-  const items = (c.titems ?? []).map((i: any) => ({
-    name: i.name, base: i.base ?? "", count: i.count ?? null, buy: i.buy ?? null,
-    main: Number(i.stock?.[MAIN_STORAGE]) || 0, inMain: i.stock ? MAIN_STORAGE in i.stock : false,
-    lastBought: bought.get(i.name) ?? null, lastMoved: moved.get(i.name) ?? null,
+  const C = (globalThis as any).RicottaRecipeCost;
+  const fromReceipts = (recs.data ?? []).map((r: any) => ({
+    entry_date: erbilDay(new Date(r.saved_at)), read_at: r.saved_at, supplier_name: r.supplier,
+    currency: r.currency, rate: r.rate, lines: (r.lines ?? []).map((l: any) => ({ item: l.item, unit: l.unit, unit_cost: l.cost })),
   }));
+  const invoicePrices = C.lastPrices(invoices.data ?? []);
+  const receiptPrices = C.lastPrices(fromReceipts);
+  // A receipt entered here can be newer than the invoice reader's copy. Prefer the invoice on a tie.
+  const items = (c.titems ?? []).map((i: any) => {
+    const invoice = invoicePrices.get(i.name), receipt = receiptPrices.get(i.name);
+    const price = C.priceOf(i, !invoice || (receipt && receipt.day > invoice.day) ? receipt : invoice);
+    return {
+      name: i.name, base: i.base ?? "", count: i.count ?? null, buy: i.buy ?? null,
+      main: Number(i.stock?.[MAIN_STORAGE]) || 0, inMain: i.stock ? MAIN_STORAGE in i.stock : false,
+      lastBought: bought.get(i.name) ?? null, lastMoved: moved.get(i.name) ?? null, price,
+    };
+  });
   // Rico's state, for the Check now button on the Stock tab (the same as on Receipts and Transfers).
   return { at: c.at ?? null, zone: MAIN_STORAGE, items, helper: helperView(h) };
 }
@@ -166,6 +204,7 @@ export async function stockView(db: any) {
 export async function transfersRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response | null> {
   const { db, json, fail } = ctx;
   let m: RegExpMatchArray | null;
+  if (M === "GET" && path === "transfers/suppliers") return json(await transferSuppliers(db));
   if (M === "GET" && path === "transfers") {
     const since = new Date(Date.now() - 60 * 86400_000).toISOString();
     const [{ data, error }, h, cat, usual] = await Promise.all([

@@ -1,3 +1,4 @@
+import { issueWatchTicket } from "../_shared/rico-watch.js";
 import { cleanTimeZone, clientIp, placeOf } from "./geo.ts";
 import { turnstileConfig, verifyTurnstile } from "../_shared/turnstile.ts";
 import { monthStart, monthKey } from "../_shared/month.ts";
@@ -114,7 +115,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers" 
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : account === "ahmad" ? [] : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes", "tourRecipes2", "recipeAlerts"]);
+const SETTING_KEYS = new Set(["ricoInlineWindow", "swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes", "tourRecipes2", "recipeAlerts"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -1053,6 +1054,12 @@ Deno.serve(async (req) => {
     if (path === "rr-invoices" || path === "rico-prices" || path.startsWith("admin/rr-reader")) {
       return (await rrReaderRoute({ db, json, fail }, req, M, path, { account: s.account, rozha, can: (role: string) => can(s, role) })) ?? fail("not_found", 404);
     }
+    if (M === "POST" && path === "rico/watch") {
+      if (!rozha) return fail("forbidden", 403);
+      const limited = await requestLimit([`account:${s.account}:local_watch`], [12]); if (limited) return limited;
+      const secret = Deno.env.get("RICO_HELPER_TOKEN") ?? "";
+      return secret.length >= 24 ? json(await issueWatchTicket(secret)) : fail("watch_unavailable", 503);
+    }
     if (path === "receipts-settings/telegram") {
       if (!rozha) return fail("forbidden", 403);
       if (M === "GET") return json(await telegramStatus(db));
@@ -1347,6 +1354,7 @@ Deno.serve(async (req) => {
     // Settings are the account's own: both of its phones share them.
     if (M === "PUT" && path === "settings") {
       const key = String(b.key ?? ""), value = b.value;
+      if(key === "ricoInlineWindow" && !rozha) return fail("forbidden",403);
       if(s.account === "ahmad" && !can(s,"order") && ["showLastQty","compactRows","soundQty","soundSent","soundMilestone","soundUndo","milestones","pinnedSuppliers","swipe"].includes(key)) return fail("forbidden",403);
       if(s.account === "ahmad" && !can(s,"assistant") && ["ricoSheet","ricoStyle","ricoAutoStart","soundRico"].includes(key)) return fail("forbidden",403);
       if(s.account === "ahmad" && !can(s,"transfers") && key === "tfAuto") return fail("forbidden",403);
@@ -1482,10 +1490,11 @@ Deno.serve(async (req) => {
     if ((m = path.match(/^rico-chats\/([0-9a-f-]{36})\/title$/)) && M === "PUT") {
       const title = plain(b?.title, 80);
       if (!title) return fail("invalid_input");
-      let q = db.from("app_rico_chats").update({ title }).eq("id", m[1]);
+      const updatedAt = nowIso();
+      let q = db.from("app_rico_chats").update({ title, updated_at: updatedAt }).eq("id", m[1]);
       if (!isRozha(s)) q = q.eq("account", s.account);
       const { data: done, error } = await q.select("id");
-      return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();
+      return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : json({ ok: true, updatedAt });
     }
     // Pinning a chat (it stays at the top of the list): the person's own (Rozh: any).
     if ((m = path.match(/^rico-chats\/([0-9a-f-]{36})\/pin$/)) && M === "PUT") {

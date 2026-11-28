@@ -85,6 +85,11 @@
     const group=unitGroup(said);
     return group?units.find(u=>group.some(w=>normalize(w)===normalize(u)))||null:null;
   }
+  /* Prefixes are only suggestions among an item's units, never a global unit guess. */
+  function unitPrefix(u, said) {
+    const prefix=normalize(said);
+    return prefix.length>=2 && (unitGroup(u)||[u]).some(a=>normalize(a).startsWith(prefix));
+  }
   // The same unit in another size: 1 کیلۆ is 1000 غرام, 1 لتر is 1000 ملی لتر.
   const UNIT_SIZES=[[UNIT_GROUPS[0],UNIT_GROUPS[1],1000],[UNIT_GROUPS[3],UNIT_GROUPS[2],1000]];
   /* The amount in one of the item's own units: {unit, amount}, or null when none fits. An item counted in
@@ -107,5 +112,5 @@
   function isUnit(word, units=[]) { const s=normalize(word); return !!s && (!!unitGroup(word) || units.some(u=>normalize(u)===s)); }
   // The English name of each known unit (kg, g, ml, l, piece, ...), for Rico to say which one a written unit is.
   const unitNames=Object.freeze(UNIT_GROUPS.map(g=>g.find(w=>/^[a-z]/.test(w))));
-  globalThis.RicottaSearch=Object.freeze({normalize,score,rank,unit,fit,isUnit,unitNames});
+  globalThis.RicottaSearch=Object.freeze({normalize,score,rank,unit,unitPrefix,fit,isUnit,unitNames});
 })();

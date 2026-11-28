@@ -214,7 +214,7 @@ function rrStockNote(at, learntAt){
 function rrRicoBar(h, copyAt){
   if(!h) return '';
   const on = h.online && !h.stopped && !rrOffline();
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}</section>`;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${on && isRozha() && state.settings?.ricoInlineWindow !== false ? `<button type="button" class="rr-ctl" data-rr-activity>${esc(t('rrActivityTitle'))}</button>` : ''}${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}<p class="rr-ctl-note warn" data-rr-slow hidden role="status">${esc(t('rrSlowConnection'))}</p></section>`;
 }
 /* Check now: Rico reads Ricotta Restaurant's suppliers, zones, items and units straight away (he also
    does it by himself every 10 minutes). Only while he is on; one check at a time. */
@@ -251,7 +251,107 @@ function rrCheckSummary(c, when){
   const names = (label, list)=> list?.length ? ` ${label}: ${list.slice(0, 5).join(sep)}${list.length > 5 ? '…' : ''}.` : '';
   return t('rrCheckFound')(when, parts.join(sep)) + names(t('rrCheckNewLabel'), it.addedNames) + names(t('rrCheckChangedLabel'), it.changedNames);
 }
+const RR_WATCH_URL = 'http://127.0.0.1:17692';
+function rrOpenActivity(trigger, {starting = false} = {}){
+  if(!isRozha() || !['receipts','transfers'].includes(state.view)) return;
+  const label = t('rrActivityTitle'), session = apiSession();
+  const {el, close} = openKitchenSheet('rr-activity-sheet', `<div class="sched-head"><div class="sel-title">${esc(label)}</div>
+    <button type="button" class="btn btn-ghost" data-close-activity aria-label="${esc(t('cancel'))}">×</button></div>
+    <p class="rr-ctl-note" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
+    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`, label, {returnFocus:trigger});
+  const panel = el.querySelector('.rr-watch-screen'), image = panel.querySelector('img'), cursor = panel.querySelector('i');
+  const status = el.querySelector('[data-watch-status]');
+  let picture = '', ticket = null, expires = 0;
+  const active = ()=>el.isConnected && !el.classList.contains('out') && apiSessionMatches(session);
+  const clear = ()=>{
+    if(picture) URL.revokeObjectURL(picture);
+    picture = '';
+    image.removeAttribute('src');
+    panel.hidden = true;
+    cursor.hidden = true;
+  };
+  el.querySelector('[data-close-activity]').onclick = ()=>close();
+  const local = (path, headers)=>fetch(RR_WATCH_URL + path, {
+    headers, cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
+  });
+  const delay = ms=>new Promise(resolve=>setTimeout(resolve, ms));
+  void (async ()=>{
+    try{
+      // The Mac launcher may need a few seconds to start Rico and his browser.
+      const deadline = performance.now() + (starting ? 20000 : 0);
+      let ready = await local('/ready').then(res=>res.ok, ()=>false);
+      while(!ready && active() && performance.now() < deadline){
+        await delay(800);
+        if(active()) ready = await local('/ready').then(res=>res.ok, ()=>false);
+      }
+      if(!active()) return;
+      if(!ready){ status.textContent = t('rrWatchUnavailable'); return; }
+      while(active()){
+        if(document.hidden){ clear(); await delay(600); continue; }
+        if(!ticket || Date.now() > expires - 5000){
+          const res = await api('rico/watch', {method:'POST', body:{}, quiet:true});
+          if(!active()) break;
+          if(!res.ok || typeof res.data?.ticket !== 'string' || !Number.isFinite(res.data.expires)){
+            clear(); status.textContent = t('rrWatchUnavailable'); break;
+          }
+          ({ticket, expires} = res.data);
+        }
+        try{
+          const res = await local('/frame', {Authorization:'Bearer ' + ticket});
+          if(!active() || document.hidden) continue;
+          if(res.status === 401){ clear(); status.textContent = t('rrWatchUnavailable'); break; }
+          if(res.status === 204){
+            clear(); status.textContent = t('rrWatchWaiting');
+          }else if(res.ok && res.headers.get('Content-Type') === 'image/jpeg'){
+            const frame = await res.blob();
+            if(!active() || document.hidden) continue;
+            const old = picture;
+            picture = URL.createObjectURL(frame);
+            image.src = picture;
+            if(old) URL.revokeObjectURL(old);
+            panel.hidden = false;
+            status.textContent = t('rrWatchReadOnly');
+            const point = res.headers.get('X-Rico-Pointer');
+            const [x, y, mode] = point ? point.split(',') : [];
+            cursor.hidden = x == null || y == null || ![x,y].every(n=>Number(n) >= 0 && Number(n) <= 1);
+            if(!cursor.hidden){
+              cursor.style.left = Number(x) * 100 + '%'; cursor.style.top = Number(y) * 100 + '%';
+              cursor.dataset.mode = ['press','type'].includes(mode) ? mode : 'point';
+            }
+          }else if(res.status !== 429){
+            clear(); status.textContent = t('rrWatchWaiting');
+          }
+        }catch{
+          clear(); status.textContent = t('rrWatchUnavailable'); break;
+        }
+        await delay(panel.hidden ? 650 : 280);
+      }
+    }finally{
+      if(!active()) clear();
+    }
+  })();
+}
+// Check the connection from this device, separately from the helper's status on the Mac.
+let rrNetworkAt = -Infinity, rrNetworkSlow = false;
+function rrPaintNetwork(){
+  const info = navigator.connection;
+  const slow = !rrOffline() && (rrNetworkSlow || ['slow-2g','2g'].includes(info?.effectiveType) || info?.rtt >= 900);
+  document.querySelectorAll('[data-rr-slow]').forEach(note=>{ note.hidden = !slow; });
+}
+function rrCheckNetwork(){
+  rrPaintNetwork();
+  if(rrOffline() || document.hidden || performance.now() - rrNetworkAt < 60_000) return;
+  const start = rrNetworkAt = performance.now();
+  void api('health', {quiet:true, timeout:5000}).then(r=>{
+    if(r.stale) return;
+    rrNetworkSlow = (r.ok || r.status === 0) && performance.now() - start >= 2500;
+    rrPaintNetwork();
+  });
+}
+navigator.connection?.addEventListener?.('change', rrPaintNetwork);
 function attachRicoBar(){
+  if(document.querySelector('[data-rr-slow]')) rrCheckNetwork();
+  document.querySelectorAll('[data-rr-activity]').forEach(b=>b.onclick = ()=>rrOpenActivity(b));
   document.querySelectorAll('[data-rr-check]').forEach(b=>b.onclick = ()=>withBusy(b, async ()=>{
     const res = await api('rico/check-now', {method:'POST', body:{}});
     const h = res.data?.helper || (res.ok ? res.data : null);
@@ -262,11 +362,16 @@ function attachRicoBar(){
   }));
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
     b.disabled = true;
-    const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
+    const action = b.dataset.rico, view = state.view, session = apiSession();
+    const res = await api('receipts-settings/rico', {method:'POST', body:{action}});
+    if(!apiSessionMatches(session)) return;
     const h = res.data?.helper || (res.ok ? res.data : null);
     if(h){ if(rr.data) rr.data.helper = h; if(typeof tf !== 'undefined' && tf.data) tf.data.helper = h; }
     if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
     rrRepaintKeep();
+    if(res.ok && action !== 'stop' && state.view === view && state.settings?.ricoInlineWindow !== false){
+      rrOpenActivity(document.querySelector('[data-rico="' + action + '"]'), {starting:true});
+    }
   });
   document.querySelectorAll('[data-to-history]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.toHistory; goView('history'); });
   // Waiting to send: one, or all of them one after another (each still asks what it needs to).
@@ -385,7 +490,7 @@ function rrReveal(el){
    same box on the line above or below, ⌥Y Record for yesterday (Transfers). Keys are matched by
    position, so a Mac's ⌥ letters don't matter. */
 // unit: on an amount, opens the unit menu and then moves through the units; next: from an amount to the next item.
-const RR_KEYS = {sidebar:'Mod+Backslash', unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
+const RR_KEYS = {sidebar:'Mod+Backslash', unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown'};
 const rrKeyOf = act=> (state.settings?.keys && state.settings.keys[act]) || RR_KEYS[act];
 /* An event as "Mod+Alt+Shift+KeyN" (Mod is ⌘ on a Mac, Ctrl elsewhere). */
 const rrCombo_ = e=> [(e.metaKey || e.ctrlKey) ? 'Mod' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.code].filter(Boolean).join('+');
@@ -404,7 +509,6 @@ function rrLineKeys(e, a){
   const kind = el=> el?.matches?.('[data-l-item]') ? 'item' : el?.matches?.('[data-l-qty]') ? 'qty' : el?.matches?.('[data-l-cost]') ? 'cost' : el?.classList?.contains('sel-btn') ? 'unit' : 'item';
   const run = fn=>{ e.preventDefault(); e.stopPropagation(); fn(); return true; };
   if(act === 'add') return run(()=>a.add());
-  if(act === 'yest') return a.yesterday ? run(a.yesterday) : false;
   if(i < 0) return false;
   if(act === 'dup') return run(()=>a.dup(i));
   if(act === 'del') return run(()=>line.querySelector('[data-l-del]')?.click());
@@ -844,7 +948,13 @@ function attachReceiptEdit(){
     rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.mathCost ? null : l.cost}); changed(true); go('rrQty' + (i + 1)); }});
   };
   // A new receipt starts on the supplier box (on a computer; a phone waits for a tap).
-  if(rr.fresh){ rr.fresh = false; if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go('rrSupplier')); }
+  if(rr.fresh){
+    rr.fresh = false;
+    const opener = document.activeElement;
+    if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>{
+      if(state.view === 'receipts' && rrFind(rr.id) === r && document.activeElement === opener) go('rrSupplier');
+    });
+  }
 }
 /* Only the totals change while typing a number: the boxes keep their focus and the keyboard stays up. */
 function rrPaintTotals(r){
@@ -1067,6 +1177,7 @@ function renderRicoReceiptSettings(){
     <div class="form-card rs-card">
       ${rrHelperStatusRow(h)}
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" data-feature="ricoAutoStart" ${featureOn('ricoAutoStart') ? 'checked' : ''}>${setIcon('ricoAutoStart')}<span>${esc(t('feat_ricoAutoStart'))}<small>${esc(t('feat_ricoAutoStart_hint'))}</small></span></label>
+      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="ricoInlineWindow" ${state.settings?.ricoInlineWindow !== false ? 'checked' : ''}>${setIcon('ricoMac')}<span>${esc(t('rrWatchSetting'))}<small>${esc(t('rrWatchSettingHint'))}</small></span></label>
       <div class="rs-row has-ico">${setIcon('ricoReceipts')}<span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}>${setIcon('tfAuto')}<span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}>${setIcon('ricoStop')}<span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
@@ -1087,6 +1198,16 @@ function attachRicoReceiptSettings(){
     if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); } else toast(t('saveFailed'), 'error');
     if(redraw) render();
     return res.ok;
+  };
+  const inline = document.getElementById('ricoInlineWindow');
+  if(inline) inline.onchange = async ()=>{
+    const value = inline.checked;
+    inline.disabled = true;
+    const res = await api('settings', {method:'PUT', body:{key:'ricoInlineWindow', value}});
+    if(res.stale) return;
+    if(res.ok){ state.settings.ricoInlineWindow = value; toast(t('rrSettingsSaved')); }
+    else { inline.checked = !value; toast(t('saveFailed'), 'error'); }
+    inline.disabled = false;
   };
   const s = document.getElementById('rrStop'); if(s) s.onchange = async ()=>{
     if(!(await put({stopped:s.checked}, false))){ s.checked = !s.checked; return; }

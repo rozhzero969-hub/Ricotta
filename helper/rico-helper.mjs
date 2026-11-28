@@ -3,7 +3,7 @@
 //   node helper/rico-helper.mjs --practice   fill in each receipt, photograph it, then discard it
 //
 // Ricotta Restaurant (another team's web app) has no API for us, so Rico uses it the way a person
-// does, in a browser window of his own, full screen, that keeps its own sign-in. His rules:
+// does, in a private browser session that keeps its own sign-in. His rules:
 //  - Names, units and numbers are matched exactly as Ricotta Restaurant writes them. Anything not
 //    found, or anything that reads back different from what was typed, stops the receipt with the reason.
 //  - He reads every box back before saving, and checks Ricotta Restaurant's own totals against ours.
@@ -17,10 +17,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { readSecret } from "./keychain.mjs";
+import { captureWatchFrame, setupWatchCursor, startWatchServer } from "./watch.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-16.1";
+const VERSION = "2026-11-28.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -33,16 +34,16 @@ const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- Ricotta Orders ---------- */
-async function api(path, { method = "GET", body } = {}) {
+async function api(path, { method = "GET", body, timeout = 70_000, retries = 3 } = {}) {
   for (let tries = 0; ; tries++) {
     try {
-      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(70_000) });
+      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(timeout) });
       const data = await res.json().catch(() => null);
       if (res.ok) return data;
       if (res.status === 401) throw new Error("Ricotta Orders did not accept Rico's token. Run node helper/setup.mjs --new-token");
-      if (res.status < 500 || tries >= 3) throw new Error(`Ricotta Orders answered ${res.status} ${data?.error ?? ""}`);
+      if (res.status < 500 || tries >= retries) throw new Error(`Ricotta Orders answered ${res.status} ${data?.error ?? ""}`);
     } catch (e) {
-      if (String(e.message).startsWith("Ricotta Orders") || tries >= 3) throw e;
+      if (String(e.message).startsWith("Ricotta Orders") || tries >= retries) throw e;
     }
     await sleep(2000 * (tries + 1));
   }
@@ -140,9 +141,12 @@ const digits = (s) => String(s ?? "").replace(/[^\d.]/g, "");
 const money = (n) => Math.round(Number(n) * 1000) / 1000;
 
 let browser, page, signedIn = false;
-async function openBrowser() {
-  browser = await chromium.launchPersistentContext(PROFILE, { headless: false, viewport: null, args: ["--start-fullscreen", "--start-maximized"] });
+async function openBrowser(inline) {
+  browser = await chromium.launchPersistentContext(PROFILE, inline
+    ? { headless: true, viewport: { width: 1440, height: 960 } }
+    : { headless: false, viewport: null, args: ["--start-fullscreen", "--start-maximized"] });
   page = browser.pages()[0] ?? await browser.newPage();
+  if(inline) await setupWatchCursor(page, RR);
 }
 /* Signed out (the session ran out)? Sign in again with what setup saved, and say so. */
 async function ensureSignedIn(id) {
@@ -944,9 +948,16 @@ async function readPrices({ auto }) {
 async function heartbeat(idle) {
   try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real", sync: true, prices: true } }); } catch (e) { log("heartbeat:", e.message); return null; }
 }
-await openBrowser();
+const viewMode = await api("helper/view-mode", { timeout: 3500, retries: 0 }).catch(() => null);
+const inline = viewMode?.inline !== false;
+await openBrowser(inline);
+// The browser view is read-only and local to this Mac. Never send the sign-in page to the viewer.
+const watch = inline ? startWatchServer({
+  secret: TOKEN, capture: () => captureWatchFrame(page, RR, () => signedIn),
+  onError: () => log("Local Ricotta viewer could not start"),
+}) : null;
 // Stopped (Stop Rico, Ctrl+C or closing Terminal): his browser windows close with him.
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, async () => { try { await browser?.close(); await joiner?.close(); } finally { process.exit(0); } });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, async () => { try { watch?.close(); await browser?.close(); await joiner?.close(); } finally { process.exit(0); } });
 log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
