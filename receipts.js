@@ -269,10 +269,10 @@ function rrWatchPopover(trigger, label){
     <p class="rr-watch-status" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>`;
   document.body.appendChild(el);
 
-  const session = apiSession(), events = new AbortController(), signal = events.signal;
+  const session = apiSession(), openingView = state.view, events = new AbortController(), signal = events.signal;
   const grip = el.querySelector('[data-watch-grip]');
   const sizes = [...el.querySelectorAll('[data-watch-size]')];
-  let anchor, drag, dragged = false, expanded = false, editing = null, workingPoint = null, pointerRelease = 0, positionFrame = 0;
+  let anchor, drag, dragged = false, expanded = false, editing = null, workingPoint = null, pointerRelease = 0, positionFrame = 0, docked = false;
   const gutter = 12, gap = 8;
   const clamp = (n, max)=>Math.max(gutter, Math.min(n, max));
   const findAnchor = ()=>document.querySelector('#mainContent [data-rr-activity]') ||
@@ -304,7 +304,10 @@ function rrWatchPopover(trigger, label){
     if(!active()) return;
     const next = findAnchor();
     if(next !== anchor){ markOpen(anchor, false); anchor = next; markOpen(anchor, true); }
-    const rect = anchor?.getBoundingClientRect(), viewportHeight = innerHeight;
+    // An incoming page's Watch button may still be sliding into place. Dock this same player
+    // once when leaving its opening screen instead of chasing a moving anchor on every tab.
+    if(state.view !== openingView) docked = true;
+    const rect = docked ? null : anchor?.getBoundingClientRect(), viewportHeight = innerHeight;
     const width = Math.min(expanded ? 620 : 280, innerWidth - 2 * gutter);
     const height = el.offsetHeight;
     const right = innerWidth - width - gutter, bottom = viewportHeight - height - gutter;
@@ -449,13 +452,22 @@ function rrOpenActivity(trigger, {starting = false} = {}){
   const {el, active, signal} = rrWatchPopover(trigger, t('rrActivityTitle'));
   const panel = el.querySelector('.rr-watch-screen'), image = panel.querySelector('img'), cursor = panel.querySelector('i');
   const status = el.querySelector('[data-watch-status]');
-  let picture = '', ticket = null, expires = 0;
+  let picture = '', lastFrameAt = -Infinity, ticket = null, expires = 0;
   const clear = ()=>{
     if(picture) URL.revokeObjectURL(picture);
     picture = '';
     image.removeAttribute('src');
     panel.hidden = true;
     cursor.hidden = true;
+    status.removeAttribute('data-live');
+  };
+  const waiting = ()=>{
+    // Navigation and a momentarily busy browser can miss a frame. Keep the decoded preview
+    // briefly so the player stays the same size while Rico's next page paints.
+    if(performance.now() - lastFrameAt > 2500) clear();
+    cursor.hidden = true;
+    status.removeAttribute('data-live');
+    status.textContent = t('rrWatchWaiting');
   };
   signal.addEventListener('abort', clear, {once:true});
   const local = async (path, frameTicket = '')=>{
@@ -501,15 +513,27 @@ function rrOpenActivity(trigger, {starting = false} = {}){
           if(!active() || document.hidden) continue;
           if(res.status === 401){ clear(); status.textContent = t('rrWatchUnavailable'); break; }
           if(res.status === 204){
-            clear(); status.textContent = t('rrWatchWaiting');
+            waiting();
+            frameDelay = 300;
           }else if(res.ok && res.headers.get('Content-Type') === 'image/jpeg'){
             const frame = await res.blob();
             if(!active() || document.hidden) continue;
+            const next = URL.createObjectURL(frame), decoded = new Image();
+            decoded.src = next;
+            const valid = await decoded.decode().then(()=>true, ()=>false);
+            if(!valid || !active() || document.hidden){
+              URL.revokeObjectURL(next);
+              if(active() && !document.hidden) waiting();
+              await delay(145);
+              continue;
+            }
             const old = picture;
-            picture = URL.createObjectURL(frame);
+            picture = next;
             image.src = picture;
             if(old) URL.revokeObjectURL(old);
+            lastFrameAt = performance.now();
             panel.hidden = false;
+            status.dataset.live = '';
             status.textContent = t('rrWatchReadOnly');
             const point = res.headers.get('X-Rico-Pointer');
             const [x, y, mode] = point ? point.split(',') : [];
@@ -521,7 +545,8 @@ function rrOpenActivity(trigger, {starting = false} = {}){
           }else if(res.status === 429){
             frameDelay = 255;
           }else{
-            clear(); status.textContent = t('rrWatchWaiting');
+            waiting();
+            frameDelay = 300;
           }
         }catch{
           clear(); status.textContent = t('rrWatchUnavailable'); break;
@@ -1389,7 +1414,7 @@ function renderRicoReceiptSettings(){
     <div class="form-card rs-card">
       ${rrHelperStatusRow(h)}
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" data-feature="ricoAutoStart" ${featureOn('ricoAutoStart') ? 'checked' : ''}>${setIcon('ricoAutoStart')}<span>${esc(t('feat_ricoAutoStart'))}<small>${esc(t('feat_ricoAutoStart_hint'))}</small></span></label>
-      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="ricoInlineWindow" ${state.settings?.ricoInlineWindow !== false ? 'checked' : ''}>${setIcon('ricoMac')}<span>${esc(t('rrWatchSetting'))}<small>${esc(t('rrWatchSettingHint'))}</small></span></label>
+      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="ricoInlineWindow" ${state.settings?.ricoInlineWindow !== false ? 'checked' : ''}>${setIcon('ricoWatch')}<span>${esc(t('rrWatchSetting'))}<small>${esc(t('rrWatchSettingHint'))}</small></span></label>
       <div class="rs-row has-ico">${setIcon('ricoReceipts')}<span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}>${setIcon('tfAuto')}<span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}>${setIcon('ricoStop')}<span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>

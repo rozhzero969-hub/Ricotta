@@ -341,7 +341,10 @@ async function run(){
     await page.evaluate(image=>{
       window.webkit = {messageHandlers:{ricoWatch:{async postMessage({path,ticket}){
         if(path === '/ready' && !ticket) return {status:204};
-        if(path === '/frame' && ticket === 'watch-fixture') return {status:200,image,pointer:'0.6,0.5,type'};
+        if(path === '/frame' && ticket === 'watch-fixture'){
+          if(window.watchFramePaused) return {status:204};
+          return {status:200,image,pointer:'0.6,0.5,type'};
+        }
         throw new Error('Unexpected Watch Rico message');
       }}}};
     }, sampleFrame.toString('base64'));
@@ -358,10 +361,18 @@ async function run(){
     await prepareStart(undefined);
     await page.locator('[data-rico=real]').click();
     await page.locator('.rr-watch-screen img').waitFor();
-    await page.evaluate(()=>goView('stock'));
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.evaluate(()=>{
+      window.watchPlayerBeforeNavigation = document.getElementById('rrWatchFloating');
+      window.watchFramePaused = true;
+      goView('stock');
+    });
     await page.locator('.stk-value-total').waitFor();
-    await page.locator('.rr-watch-floating img').waitFor();
-    await page.evaluate(()=>goView('receipts'));
+    await page.locator('.rr-watch-floating [data-watch-status]').filter({hasText:/Waiting for Rico/}).waitFor();
+    assert.equal(await page.locator('.rr-watch-floating img').isVisible(),true,'a missed frame during navigation keeps the preview visible');
+    assert.equal(await page.evaluate(()=>window.watchPlayerBeforeNavigation === document.getElementById('rrWatchFloating')),true,'navigation keeps the same player');
+    await page.evaluate(()=>{ window.watchFramePaused = false; goView('receipts'); });
+    await page.emulateMedia({reducedMotion:'reduce'});
     await page.locator('#rrItem0').focus();
     assert.equal(await page.locator('.rr-watch-floating img').isVisible(),true,'typing and switching screens keeps the floating viewer open');
     await page.locator('.rr-watch-floating [data-close-activity]').click();

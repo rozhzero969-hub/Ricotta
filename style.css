@@ -3837,6 +3837,8 @@ html.rtl #tfSmartEntry{text-align:right}
 .rr-watch-popover.expanded .rr-watch-size-icon{transform:scale(.72)}
 .rr-watch-heading .rr-ctl{padding:0;min-width:30px;min-height:30px;font-size:1.0625rem}
 .rr-watch-status{margin:6px 5px 3px;font-size:.75rem;line-height:1.35;color:var(--ink-soft)}
+.rr-watch-status[data-live]::before{content:'';display:inline-block;width:6px;height:6px;margin-inline-end:6px;
+  border-radius:50%;background:#34a86e;vertical-align:1px}
 .rr-watch-screen{position:relative;display:block;width:100%;margin-top:5px;padding:0;border:1px solid var(--line);
   border-radius:10px;overflow:hidden;background:var(--surface-2);cursor:zoom-in;direction:ltr}
 .rr-watch-screen[hidden]{display:none}
