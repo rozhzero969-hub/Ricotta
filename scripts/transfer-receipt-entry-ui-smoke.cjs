@@ -124,7 +124,6 @@ async function run(){
     assert.equal(await page.evaluate(()=>tfFind(tf.id).lines.some(line=>line.item)),false,'reserved stock cannot enter this draft');
     await page.locator('[data-tf-mode=smart]').click();
     await page.locator('[data-rr-activity]').click();
-    await page.getByRole('button',{name:/Floating view/}).click();
     await page.locator('.rr-watch-screen img').waitFor();
     await page.locator('.rr-watch-screen i[data-mode=type]').waitFor();
     const [watchButton, watchPopup] = await Promise.all([
@@ -134,6 +133,34 @@ async function run(){
     assert.ok(watchPopup.width <= 380 && watchPopup.y >= watchButton.y + watchButton.height,
       'Watch Rico opens as a compact popup underneath its button');
     assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'25%');
+    const player = page.locator('.rr-watch-floating'), preview = player.locator('.rr-watch-screen');
+    await preview.click();
+    await page.waitForFunction(()=>document.getElementById('rrWatchFloating').offsetWidth >= 580);
+    await preview.click();
+    await page.waitForFunction(()=>document.getElementById('rrWatchFloating').offsetWidth <= 280);
+    const heading = await player.locator('.rr-watch-heading').boundingBox();
+    const mini = await player.boundingBox();
+    const fieldBox = await page.locator('#tfSmartEntry').boundingBox();
+    const field = {x:fieldBox.x, y:Math.min(fieldBox.y, 900 - mini.height - 12)};
+    const grip = {x:heading.x+heading.width/2, y:heading.y+heading.height/2};
+    await page.mouse.move(grip.x,grip.y);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + field.x - mini.x, grip.y + field.y - mini.y, {steps:8});
+    await page.mouse.up();
+    await page.waitForFunction(({x,y})=>{
+      const box = document.getElementById('rrWatchFloating').getBoundingClientRect();
+      return Math.abs(box.x-x) < 6 && Math.abs(box.y-y) < 6;
+    }, field);
+    await page.locator('#tfSmartEntry').focus();
+    await page.waitForFunction(({x,y})=>{
+      const box = document.getElementById('rrWatchFloating').getBoundingClientRect();
+      return Math.abs(box.x-x) > 40 || Math.abs(box.y-y) > 40;
+    }, field);
+    await player.locator('.rr-watch-title').focus();
+    await page.waitForFunction(({x,y})=>{
+      const box = document.getElementById('rrWatchFloating').getBoundingClientRect();
+      return Math.abs(box.x-x) < 6 && Math.abs(box.y-y) < 6;
+    }, field);
     await page.setViewportSize({width:390,height:720});
     await page.waitForFunction(()=>{
       const popup = document.getElementById('rrWatchFloating');
@@ -314,17 +341,18 @@ async function run(){
     await page.evaluate(image=>{
       window.webkit = {messageHandlers:{ricoWatch:{async postMessage({path,ticket}){
         if(path === '/ready' && !ticket) return {status:204};
-        if(path === '/frame' && ticket === 'watch-fixture') return {status:200,image,pointer:'0.6,0.5,type'};
+        if(path === '/frame' && ticket === 'watch-fixture'){
+          if(window.watchFramePaused) return {status:204};
+          return {status:200,image,pointer:'0.6,0.5,type'};
+        }
         throw new Error('Unexpected Watch Rico message');
       }}}};
     }, sampleFrame.toString('base64'));
     await receipts.locator('[data-rr-activity]').click();
-    await page.getByRole('button',{name:/Large view/}).click();
-    await page.locator('.rr-watch-large[role="dialog"], .rr-watch-large [role="dialog"]').waitFor();
     await page.locator('.rr-watch-screen img').waitFor();
     assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'60%','Mac viewer uses the native bridge');
     await page.keyboard.press('Escape');
-    await page.locator('.rr-watch-large').waitFor({state:'detached'});
+    await page.locator('.rr-watch-popover').waitFor({state:'detached'});
     const prepareStart = inline=>page.evaluate(inline=>{
       state.settings.ricoInlineWindow = inline;
       rr.data.helper = {online:false,launcher:{online:true}};
@@ -332,12 +360,19 @@ async function run(){
     }, inline);
     await prepareStart(undefined);
     await page.locator('[data-rico=real]').click();
-    await page.getByRole('button',{name:/Floating view/}).click();
     await page.locator('.rr-watch-screen img').waitFor();
-    await page.evaluate(()=>goView('stock'));
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.evaluate(()=>{
+      window.watchPlayerBeforeNavigation = document.getElementById('rrWatchFloating');
+      window.watchFramePaused = true;
+      goView('stock');
+    });
     await page.locator('.stk-value-total').waitFor();
-    await page.locator('.rr-watch-floating img').waitFor();
-    await page.evaluate(()=>goView('receipts'));
+    await page.locator('.rr-watch-floating [data-watch-status]').filter({hasText:/Waiting for Rico/}).waitFor();
+    assert.equal(await page.locator('.rr-watch-floating img').isVisible(),true,'a missed frame during navigation keeps the preview visible');
+    assert.equal(await page.evaluate(()=>window.watchPlayerBeforeNavigation === document.getElementById('rrWatchFloating')),true,'navigation keeps the same player');
+    await page.evaluate(()=>{ window.watchFramePaused = false; goView('receipts'); });
+    await page.emulateMedia({reducedMotion:'reduce'});
     await page.locator('#rrItem0').focus();
     assert.equal(await page.locator('.rr-watch-floating img').isVisible(),true,'typing and switching screens keeps the floating viewer open');
     await page.locator('.rr-watch-floating [data-close-activity]').click();

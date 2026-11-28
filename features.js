@@ -42,6 +42,7 @@ const SETTING_ICONS = {
   ricoSheet:['#1F7A4D', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
   ricoAutoStart:['#34C759', SF('<path d="M12 3.4v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>')],
   ricoMac:['#1F7A4D', SF('<rect x="4" y="5" width="16" height="10.6" rx="1.8"/><path d="M2.6 18.6h18.8"/>')],
+  ricoWatch:['#386DD8', SF('<rect x="3.5" y="4.75" width="17" height="11.5" rx="2"/><path d="M8 19.25h8M12 16.25v3M12 13V7.5m-2.5 2.5L12 7.5l2.5 2.5"/>')],
   ricoReceipts:['#FF9500', SF('<path d="M6.4 3.4h11.2v17.2l-2.8-1.8-2.8 1.8-2.8-1.8-2.8 1.8Z"/><path d="M9.2 8.4h5.6M9.2 12h5.6" stroke="#FF9500" stroke-width="1.9"/>', true)],
   tfAuto:['#30B0C7', SF('<path d="M4.4 8.6h13.2l-3.2-3.2M19.6 15.4H6.4l3.2 3.2"/>')],
   ricoStop:['#FF3B30', SF('<rect x="6.4" y="6.4" width="11.2" height="11.2" rx="2.2"/>', true)],
