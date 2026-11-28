@@ -1,7 +1,6 @@
 # Rico on the Mac
 
-Rico enters receipts from Ricotta Orders into Ricotta Restaurant, the way a person does, in a browser
-window of his own. Ricotta Restaurant is another team's app with no API for us, so this is the only way.
+Rico uses a browser on the Mac to enter Ricotta Orders receipts and transfers in Ricotta Restaurant.
 
 ## Once
 
@@ -19,12 +18,17 @@ Supabase as the `RICO_HELPER_TOKEN` secret (the Supabase command line must alrea
 node helper/rico-helper.mjs
 ```
 
-A full-screen window opens on Ricotta Restaurant. Rico reads its suppliers, zones and purchased items
-for the app (again every 5 minutes, and straight away when someone presses Check now in the app),
-then takes receipts one at a time: fills in New receipt, reads every box back, checks the
-totals, photographs it and waits for approval in the app (or saves by himself when Settings says so),
-presses Receive & send to finance, and finds the receipt in Invoices for its finance number. Close the
-window or press Ctrl+C to stop him; a receipt he was in the middle of is shown as stopped, never retried.
+Open **Watch Rico** from Receipts or Transfers on the Mac running the helper to see its live browser
+view. Allow local network access if the browser asks. To use a separate full-screen browser window,
+turn off **Show Rico inside Orders** in Settings before the next start.
+
+Rico reads suppliers, zones and purchased items every 5 minutes and when someone presses **Check now**.
+For each receipt, he fills in the form, checks the fields and totals, takes a photo and waits for
+approval, or saves automatically if Settings allows it. He then sends it to finance and looks up the
+finance number in Invoices.
+
+Use **Stop Rico** in the app or Ctrl+C in the terminal where you started him. An interrupted receipt
+is shown as stopped and requires review before another attempt.
 
 `node helper/rico-helper.mjs --practice` does everything except save: each receipt is filled in,
 photographed and discarded, and shows as stopped with "Practice run" in the app.
