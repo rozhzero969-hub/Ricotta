@@ -271,9 +271,19 @@ function rrOpenActivity(trigger, {starting = false} = {}){
     cursor.hidden = true;
   };
   el.querySelector('[data-close-activity]').onclick = ()=>close();
-  const local = (path, headers)=>fetch(RR_WATCH_URL + path, {
-    headers, cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
-  });
+  const local = async (path, frameTicket = '')=>{
+    const bridge = window.webkit?.messageHandlers?.ricoWatch;
+    if(bridge){
+      const frame = await bridge.postMessage({path, ticket:frameTicket});
+      const headers = frame.image ? {'Content-Type':'image/jpeg', 'X-Rico-Pointer':frame.pointer || ''} : {};
+      const body = frame.image ? Uint8Array.from(atob(frame.image), byte=>byte.charCodeAt(0)) : null;
+      return new Response(body, {status:frame.status, headers});
+    }
+    return fetch(RR_WATCH_URL + path, {
+      headers:frameTicket ? {Authorization:'Bearer ' + frameTicket} : undefined,
+      cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
+    });
+  };
   const delay = ms=>new Promise(resolve=>setTimeout(resolve, ms));
   void (async ()=>{
     try{
@@ -297,7 +307,7 @@ function rrOpenActivity(trigger, {starting = false} = {}){
           ({ticket, expires} = res.data);
         }
         try{
-          const res = await local('/frame', {Authorization:'Bearer ' + ticket});
+          const res = await local('/frame', ticket);
           if(!active() || document.hidden) continue;
           if(res.status === 401){ clear(); status.textContent = t('rrWatchUnavailable'); break; }
           if(res.status === 204){

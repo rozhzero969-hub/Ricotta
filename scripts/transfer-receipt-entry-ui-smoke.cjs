@@ -295,9 +295,17 @@ async function run(){
       rrPaintNetwork();
     });
     await slowNotice.waitFor({state:'visible'});
+    await page.evaluate(image=>{
+      window.webkit = {messageHandlers:{ricoWatch:{async postMessage({path,ticket}){
+        if(path === '/ready' && !ticket) return {status:204};
+        if(path === '/frame' && ticket === 'watch-fixture') return {status:200,image,pointer:'0.6,0.5,type'};
+        throw new Error('Unexpected Watch Rico message');
+      }}}};
+    }, sampleFrame.toString('base64'));
     await receipts.locator('[data-rr-activity]').click();
     await page.locator('.rr-activity-sheet').waitFor();
     await page.locator('.rr-watch-screen img').waitFor();
+    assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'60%','Mac viewer uses the native bridge');
     await page.keyboard.press('Escape');
     await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
     const prepareStart = inline=>page.evaluate(inline=>{

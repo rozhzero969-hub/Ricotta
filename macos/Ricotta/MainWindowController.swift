@@ -78,6 +78,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Persistent, and a sign-in separate from Safari.
         configuration.userContentController.add(WeakMessageHandler(self), name: "ricotta")
+        configuration.userContentController.addScriptMessageHandler(RicoWatchBridge(), contentWorld: .page, name: "ricoWatch")
         configuration.preferences.isElementFullscreenEnabled = true
         installFlags(configuration.userContentController)
         webView = RicottaWebView(frame: .zero, configuration: configuration)
@@ -587,5 +588,60 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler, UNUser
     init(_ target: WKScriptMessageHandler) { self.target = target }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         target?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+
+/// Exposes only the local Rico viewer to the main Orders page. WebKit blocks that page's
+/// direct HTTP request to the helper. The helper still verifies every frame ticket.
+private final class RicoWatchBridge: NSObject, WKScriptMessageHandlerWithReply {
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 3
+        configuration.timeoutIntervalForResource = 4
+        configuration.httpShouldSetCookies = false
+        return URLSession(configuration: configuration, delegate: RedirectBlocker(), delegateQueue: .main)
+    }()
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        guard message.frameInfo.isMainFrame,
+              let page = message.frameInfo.request.url, RicottaNavigation.isAppPage(page),
+              let payload = message.body as? [String: String],
+              let path = payload["path"], path == "/ready" || path == "/frame",
+              let url = URL(string: "http://127.0.0.1:17692" + path) else {
+            replyHandler(nil, "Invalid Rico viewer request")
+            return
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.setValue("https://rozhzero969-hub.github.io", forHTTPHeaderField: "Origin")
+        if path == "/frame" {
+            guard let ticket = payload["ticket"], ticket.utf8.count == 111,
+                  ticket.range(of: #"^[0-9]{13}\.[a-f0-9]{32}\.[a-f0-9]{64}$"#, options: .regularExpression) != nil else {
+                replyHandler(nil, "Invalid Rico viewer ticket")
+                return
+            }
+            request.setValue("Bearer " + ticket, forHTTPHeaderField: "Authorization")
+        }
+
+        session.dataTask(with: request) { data, response, error in
+            guard error == nil, let response = response as? HTTPURLResponse, let data, data.count <= 2_000_000 else {
+                replyHandler(nil, "Rico viewer is unavailable")
+                return
+            }
+            var result: [String: Any] = ["status": response.statusCode]
+            if response.statusCode == 200, response.mimeType == "image/jpeg" {
+                result["image"] = data.base64EncodedString()
+                result["pointer"] = response.value(forHTTPHeaderField: "X-Rico-Pointer") ?? ""
+            }
+            replyHandler(result, nil)
+        }.resume()
+    }
+
+    private final class RedirectBlocker: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
     }
 }
