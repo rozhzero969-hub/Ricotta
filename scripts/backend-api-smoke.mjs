@@ -1,3 +1,6 @@
+import { issueWatchTicket, verifyWatchTicket } from '../supabase/functions/_shared/rico-watch.js';
+import { helperRoute } from '../supabase/functions/api/receipts.ts';
+import { stockView, transfersRoute } from '../supabase/functions/api/transfers.ts';
 import { recipesRoute, ricoRecipes } from '../supabase/functions/api/recipes.ts';
 import { runRecipeCategoryTool } from '../supabase/functions/api/recipe-categories.ts';
 import {turnstileConfig,verifyTurnstile} from '../supabase/functions/_shared/turnstile.ts';
@@ -104,7 +107,7 @@ const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERV
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 globalThis.Deno = deno;
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', 'telegramWebhookAllowed', 'telegramWebhook', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null, telegramWebhookAllowed, telegramWebhook );
+const { groupHistory } = new Function('issueWatchTicket', 'stockView', 'transfersRoute', 'recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', 'telegramWebhookAllowed', 'telegramWebhook', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( issueWatchTicket, stockView, transfersRoute, recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null, telegramWebhookAllowed, telegramWebhook );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -374,6 +377,43 @@ try {
     { id: '44444444-4444-4444-8444-444444444444', account: 'rozha', title: 'new', messages: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
   assert.equal((await call('rico-chats/33333333-3333-4333-8333-333333333333', null, 'GET')).status, 404);
   assert.equal((await call('rico-chats/44444444-4444-4444-8444-444444444444', null, 'GET')).status, 200);
+  // An imported USD invoice may already be stored in IQD; value stock from the latest real invoice.
+  reset();
+  tables.app_rr_catalog = [{id:true, updated_at:new Date().toISOString(), data:{titems:[
+    {name:'Cups',base:'piece',buy:{name:'carton',factor:20},stock:{'Main Storage':30}},
+  ]}}];
+  tables.app_rr_invoices = [
+    {entry_date:'2026-11-24',currency:'IQD',total:16000,lines:[{item:'Cups',unit:'carton',qty:1,unit_cost:16000}]},
+    {entry_date:'2026-11-25',supplier_name:'Produce',currency:'USD',rate:1500,total:30000,lines:[{item:'Cups',unit:'carton',qty:1,unit_cost:30000}]},
+  ];
+  const stockReply = await call('stock', null, 'GET');
+  assert.equal(stockReply.status, 200);
+  const freshStock = (await stockReply.json()).items[0];
+  assert.equal(freshStock.price.perBase, 1500, 'newer price in IQD is not converted twice');
+  assert.equal(freshStock.price.day, '2026-11-25');
+  assert.equal(freshStock.price.supplier, 'Produce');
+  tables.app_rr_catalog[0].data.suppliers = ['Produce', 'Other'];
+  tables.app_rr_receipts = [{status:'saved', supplier:'Local Dairy', lines:[{item:'Milk'}]}];
+  const supplierReply = await call('transfers/suppliers', null, 'GET');
+  assert.equal(supplierReply.status, 200);
+  assert.deepEqual((await supplierReply.json()).suppliers, [
+    {name:'Produce',items:['Cups']}, {name:'Other',items:[]}, {name:'Local Dairy',items:['Milk']},
+  ]);
+  reset();
+  const secret = 'local-test-screen-capability-secret';
+  environment.RICO_HELPER_TOKEN = secret;
+  const { ticket, expires } = await (await call('rico/watch', {})).json();
+  assert.ok(await verifyWatchTicket(secret, ticket));
+  assert.equal(await verifyWatchTicket(secret, ticket, expires), false);
+  let mode = await helperRoute({db,json:v=>Response.json(v),fail:(_,status)=>new Response(null,{status})},'GET','helper/view-mode',{});
+  assert.equal((await mode.json()).inline,true);
+  assert.equal((await call('settings',{key:'ricoInlineWindow',value:false},'PUT')).status,200);
+  mode = await helperRoute({db,json:v=>Response.json(v),fail:(_,status)=>new Response(null,{status})},'GET','helper/view-mode',{});
+  assert.equal((await mode.json()).inline,false);
+  tables.app_sessions[0].account='yunis'; tables.app_devices[0].account='yunis';
+  assert.equal((await call('rico/watch',{})).status,403);
+  assert.equal((await call('settings',{key:'ricoInlineWindow',value:true},'PUT')).status,403);
+  delete environment.RICO_HELPER_TOKEN;
   // F06: an edit that names its fields sends only those to the database; anything else is refused.
   reset();
   assert.equal((await call('items/tomato', { name: 'Cherry tomatoes', note: 'stale note', only: ['name'] }, 'PUT')).status, 200);

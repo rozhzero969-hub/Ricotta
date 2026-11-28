@@ -69,7 +69,7 @@ async function aiConsent(){
 function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoDropDelete();
-  ricoStop(); clearTimeout(ricoSaveTimer);
+  ricoStop(); clearTimeout(ricoSaveTimer); ricoSaveTimer = 0;
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.chatsFailed = false; rico.viewing = null; rico.viewedId = null;
   rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
 }
@@ -486,6 +486,7 @@ function ricoRenameChat(id){
       const r = await api('rico-chats/' + id + '/title', {method:'PUT', body:{title}});
       if(!r.ok) return {error:t('saveFailed')};
       c.title = title;
+      if(r.data?.updatedAt){ c.updatedAt = r.data.updatedAt; rico.chats.sort(ricoRecentFirst); }
       if(rico.chatId === id){ rico.chatTitle = title; rico.titleManual = true; rico.titleLoaded = false; }
       if(state.view === 'assistant'){ syncRicoSide(); ricoRefreshHead(); }
       return {};
@@ -511,7 +512,7 @@ function ricoDeleteChat(id){
   // What was on screen, if this chat was the one open (put back by Undo, unless a new chat began since).
   const open = (rico.chatId === id || rico.viewedId === id) && !rico.streaming ? {chatId:rico.chatId, chatTitle:rico.chatTitle, titleTries:rico.titleTries, titleManual:rico.titleManual, titleLoaded:rico.titleLoaded,
     viewing:rico.viewing, viewedId:rico.viewedId, messages:rico.messages} : null;
-  if(rico.chatId === id || rico.viewedId === id) clearTimeout(ricoSaveTimer);
+  if(rico.chatId === id || rico.viewedId === id){ clearTimeout(ricoSaveTimer); ricoSaveTimer = 0; }
   rico.chats = list.filter(c=>c.id !== id);
   if(rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
   if(rico.viewing && id === rico.viewedId){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
@@ -1290,6 +1291,7 @@ async function ricoAsk(text, options = {}){
   if(!photo && prepareNow && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
+    ricoSaveSoon();
     ricoShowNewTurns();
     ricoScroll(true);
     return;
@@ -1301,6 +1303,7 @@ async function ricoAsk(text, options = {}){
   rico.messages.push(photo ? {role:'user', text, ts:Date.now(), photo:true, photoThumb:photo.thumb, photoData:photo.data} : {role:'user', text, ts:Date.now()});
   const bot = {role:'assistant', text:'', proposals:[], steps:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
+  ricoSaveSoon();
   rico.streaming = true;
   ricoShowNewTurns();
   ricoScroll(true);
@@ -1519,6 +1522,7 @@ function ricoUndo(mi, id){
    can be opened again later, also on the person's other phone (kept 90 days, newest 60). Cards in a
    reopened chat can no longer be pressed: the data may have changed since. */
 let ricoSaveTimer = 0;
+const ricoWriting = new Map();
 function ricoChatTitle(){
   const first = rico.messages.find(m=>m.role === 'user');
   return first ? ricoClean(first.text).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
@@ -1535,22 +1539,31 @@ function ricoSerialize(){
     return out;
   });
 }
+const ricoRecentFirst = (a,b)=>Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt);
 function ricoSaveSoon(){
-  clearTimeout(ricoSaveTimer);
+  clearTimeout(ricoSaveTimer); ricoSaveTimer = 0;
   if(rico.viewing) return;
   if(rico.messages.some(m=>m.role === 'user')) ricoSaveTimer = setTimeout(ricoSave, 600);
 }
 async function ricoSave(){
-  clearTimeout(ricoSaveTimer);
+  clearTimeout(ricoSaveTimer); ricoSaveTimer = 0;
   if(rico.viewing) return;
   const messages = ricoSerialize();
   if(!messages.some(m=>m.role === 'user')) return;
   if(!rico.chatId) rico.chatId = crypto.randomUUID();
   const id = rico.chatId, account = state.account, title = rico.chatTitle || ricoChatTitle();
-  const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages, keepTitle:!!rico.titleLoaded}});
-  if(!r.ok || state.account !== account || !rico.chats) return;
+  const token = ricoSessionToken(), body = {title, messages, keepTitle:!!rico.titleLoaded};
+  const save = (ricoWriting.get(id) || Promise.resolve()).then(()=>{
+    if(ricoSessionToken() !== token || state.account !== account || ricoPendingDelete?.id === id) return null;
+    return api('rico-chats/' + id, {method:'PUT', body});
+  });
+  ricoWriting.set(id, save);
+  let r;
+  try{ r = await save; }
+  finally{ if(ricoWriting.get(id) === save) ricoWriting.delete(id); }
+  if(!r?.ok || ricoSessionToken() !== token || state.account !== account || !rico.chats || ricoPendingDelete?.id === id) return;
   const pinned = !!rico.chats.find(c=>c.id === id)?.pinned;   // saving a chat keeps it pinned
-  rico.chats = [{id, account, title, pinned, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 120);
+  rico.chats = [{id, account, title, pinned, updatedAt:r.data?.updatedAt || new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].sort(ricoRecentFirst).slice(0, 120);
   if(state.view === 'assistant') syncRicoSide();   // the new chat shows in the sidebar at once
 }
 /* A short topic name for a new chat, like other AI apps ("Cheese stock"). If the AI can't, the chat keeps
@@ -1573,7 +1586,7 @@ async function ricoLoadChats(){
     await ricoFlushLeftDelete();
     let r = await apiCached('rico-chats');   // offline: the list kept on this phone
     if(r.stale && state.account === account) r = await apiCached('rico-chats');   // a save happened at the same moment
-    if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats.filter(c=>c.id !== ricoPendingDelete?.id);
+    if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats.filter(c=>c.id !== ricoPendingDelete?.id).sort(ricoRecentFirst);
     // Offline or refused: say so instead of gray lines that never fill in (opening the list again retries).
     else if(state.account === account) rico.chatsFailed = true;
   }finally{ rico.chatsBusy = false; }
@@ -1586,7 +1599,7 @@ function chatOwnerMark(c){
 /* A new chat: the current one stays in Chat history. */
 function ricoNewChat(){
   if(rico.streaming) ricoStop();
-  if(rico.messages.length) ricoSave();
+  if(ricoSaveTimer) ricoSave();
   rico.epoch++; rico.chatRequest++;
   rico.streaming = false;
   rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false;
@@ -1595,11 +1608,19 @@ function ricoNewChat(){
 async function ricoOpenChat(id){
   if(rico.streaming) return false;
   const context = ricoContext(), request = ++rico.chatRequest;
+  if(id === rico.chatId || id === rico.viewedId){
+    if(state.view !== 'assistant') goView('assistant');
+    return true;
+  }
+  const saving = ricoWriting.get(id);
+  if(saving){
+    await saving;
+    if(!ricoContextCurrent(context) || request !== rico.chatRequest) return false;
+  }
   const r = await apiCached('rico-chats/' + encodeURIComponent(id));   // a chat opened before can be read offline
   if(!ricoContextCurrent(context) || request !== rico.chatRequest || r.stale) return false;
   if(!r.ok || !Array.isArray(r.data?.messages)){ toast(t('ricoChatLoadFailed'), 'error'); return false; }
-  if(rico.chatId !== id && rico.messages.length) ricoSave();
-  clearTimeout(ricoSaveTimer);
+  if(ricoSaveTimer) ricoSave();
   rico.epoch++;
   // The other person's chat opens read only: it can be read and deleted, never continued.
   rico.viewing = r.data.account && r.data.account !== state.account ? r.data.account : null;

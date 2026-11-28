@@ -425,6 +425,10 @@ async function readerFresh(db: any) {
 export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response> {
   const { db, json, fail } = ctx;
   let m: RegExpMatchArray | null;
+  if (M === "GET" && path === "helper/view-mode") {
+    const { data, error } = await db.from("app_accounts").select("settings").eq("id", "rozha").maybeSingle();
+    return error || !data ? fail("load_failed", 503) : json({ inline: data.settings?.ricoInlineWindow !== false });
+  }
   if (M === "POST" && path === "helper/heartbeat") {
     const h = await helperRow(db);
     const patch: Record<string, unknown> = { last_seen: now(), signed_in: b.signedIn === true, version: t(b.version, 40) || null, mode: b.mode === "practice" ? "practice" : "real" };

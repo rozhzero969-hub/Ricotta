@@ -2080,10 +2080,12 @@ html.dark .rr-line-warn{color:#FDBA74}
 .tf-adds{display:flex;align-items:center;gap:8px;margin:14px 20px 0;flex-wrap:wrap}
 .tf-adds .rr-add{margin:0}
 .tf-addn{height:42px;min-width:52px;padding:0 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600}
-.tf-yest{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--line-strong);border-radius:var(--r-card);background:var(--surface);color:var(--ink);font:inherit;text-align:start;cursor:pointer}
+.tf-yest{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--line-strong);border-radius:var(--r-card);background:var(--surface);color:var(--ink);font:inherit;text-align:start}
 .tf-yest span{display:flex;flex-direction:column;gap:2px;min-width:0}
 .tf-yest b{font-weight:600}
 .tf-yest small{font-size:.8125rem;color:var(--ink-soft)}
+.tf-yest button{flex:none;display:grid;place-items:center;width:54px;height:44px;border:0;border-radius:999px;background:none;cursor:pointer}
+.tf-yest button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .tf-yest i{flex:none;width:46px;height:28px;border-radius:999px;background:var(--fill);position:relative;transition:background .2s}
 .tf-yest i::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
 .tf-yest.on{border-color:rgba(245,158,11,.6);background:rgba(245,158,11,.08)}
@@ -3802,3 +3804,32 @@ html.rtl .rico-jump-latest{translate:50% 0}
 .tf-command-guide{appearance:none;border:0;background:none;color:#5856d6;font:inherit;font-weight:650;cursor:pointer}
 .tf-command-token{justify-self:start;padding:3px 7px;border-radius:7px;background:#5856d619;color:#5856d6;font-size:.78rem;font-weight:650}
 html.dark :is(.tf-command-guide,.tf-command-token){color:#a5a3ff}
+
+/* Keep the item name, stock, and amount in separate directional runs. */
+#tfSmartMatches [role=option]:has(.tf-match-amounts){flex-wrap:nowrap;align-items:center}
+.tf-match-name{min-width:0;overflow-wrap:anywhere}
+.tf-match-amounts{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px 10px;text-align:end;flex-shrink:0;max-width:58%}
+.tf-match-amount{border-radius:8px;padding:4px 8px;background:var(--fill);color:var(--ink);font-weight:650}
+#tfSmartEntry{text-align:start}
+html.rtl #tfSmartEntry{text-align:right}
+@media(max-width:480px){
+  #tfSmartMatches [role=option]:has(.tf-match-amounts){flex-wrap:wrap}
+  .tf-match-amounts{max-width:100%;justify-content:flex-start;text-align:start}
+}
+.stk-value-card{margin-bottom:16px}
+.stk-value-total{display:block;font-size:clamp(1.65rem,4vw,2.75rem);font-variant-numeric:tabular-nums;line-height:1.2}
+.stk-qty{flex:none;display:grid;gap:2px;max-width:52%;text-align:end}
+.stk-qty small{color:var(--ink-soft);font-size:.75rem;overflow-wrap:anywhere}
+.stk-qty bdi{display:inline-block}
+.rr-activity-sheet .sel-panel{max-width:min(94vw,1060px)}
+.rr-watch-screen{position:relative;margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;direction:ltr}
+.rr-watch-screen img{display:block;width:100%;height:auto}
+.rr-watch-screen i{position:absolute;width:19px;height:22px;pointer-events:none;filter:drop-shadow(0 1px 1px #173e32);transition:top .1s ease-out,left .1s ease-out}
+.rr-watch-screen i::before,.rr-watch-screen i::after{content:'';position:absolute;inset:0;clip-path:polygon(0 0,100% 66%,61% 69%,78% 93%,61% 100%,39% 75%,19% 97%);background:white}
+.rr-watch-screen i::after{inset:2px;background:#167957}
+.rr-watch-screen i[data-mode=press]{filter:drop-shadow(0 0 5px #34c27a)}
+.rr-watch-screen i[data-mode=type]{width:13px;height:19px;border-block:2px solid #167957;transform:translate(-50%,-50%)}
+.rr-watch-screen i[data-mode=type]::before{display:none}
+.rr-watch-screen i[data-mode=type]::after{inset:0 5px;clip-path:none}
+@media(prefers-reduced-motion:reduce){.rr-watch-screen i{transition:none}}
+.tf-supplier-sheet .tf-supplier-active{background:var(--accent-soft);color:var(--ink)}

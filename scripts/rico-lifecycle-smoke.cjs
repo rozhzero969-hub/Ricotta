@@ -11,7 +11,7 @@ function fixture() {
   const c = vm.createContext({
     rico:{epoch:0,chatRequest:0,messages:[],streaming:false,chats:null,viewing:null},
     state:{account:'rozha',view:'assistant',suppliers:[],cart:{},lang:'en'},
-    ricoSaveTimer:null,
+    ricoSaveTimer:null, ricoWriting:new Map(),
     lget:key=>saved.get(key), lset:(key,v)=>v == null?saved.delete(key):saved.set(key,v),
     t:key=>key, toast:msg=>notices.push(msg), render(){}, ricoScroll(){}, ricoSave(){},
     clearTimeout, AbortController, Blob, console, navigator:{mediaDevices:{}}, window:{},
@@ -47,6 +47,21 @@ function fixture() {
   second.resolve({ok:true,data:{account:'rozha',messages:[{role:'user',text:'Second'}]}}); await b;
   first.resolve({ok:true,data:{account:'rozha',messages:[{role:'user',text:'First'}]}}); await a;
   assert.equal(ordered.c.rico.messages[0].text,'Second','the most recently selected chat wins');
+
+  const recency=fixture();
+  let writes=0;
+  recency.c.ricoSave=()=>{ writes++; recency.c.ricoSaveTimer=0; };
+  recency.c.api=async()=>({ok:true,data:{account:'rozha',messages:[{role:'user',text:'Saved question'}]}});
+  await recency.c.ricoOpenChat('one');
+  await recency.c.ricoOpenChat('two');
+  recency.c.ricoNewChat();
+  assert.equal(writes,0,'viewing and leaving saved chats do not change their timestamps');
+  await recency.c.ricoOpenChat('one');
+  recency.c.ricoSaveTimer=1;
+  await recency.c.ricoOpenChat('one');
+  assert.equal(writes,0,'opening the active chat does not write or replace it');
+  await recency.c.ricoOpenChat('two');
+  assert.equal(writes,1,'a pending edit is saved before opening a different chat');
 
   const consent=fixture(), decision=deferred();
   consent.c.esc=s=>s; consent.c.showConfirm=()=>decision.promise;

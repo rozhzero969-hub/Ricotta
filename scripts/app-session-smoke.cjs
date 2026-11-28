@@ -92,7 +92,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
     viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, liveStops:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
-    recipeReset:()=>{}, minibarReset:()=>{}, rrReset:()=>crossTab.workResets.push('receipts'), tfReset:()=>crossTab.workResets.push('transfers'), workResets:[], stk:{data:{items:['old stock']}, failed:true}, ricoReset:()=>crossTab.streamResets++, liveStop:()=>crossTab.liveStops++, resetAdmin:()=>{},
+    recipeReset:()=>{}, minibarReset:()=>{}, rrReset:()=>crossTab.workResets.push('receipts'), tfReset:()=>crossTab.workResets.push('transfers'), workResets:[], stk:{data:{items:['old stock']}, failed:true}, stockReset:()=>{crossTab.stk.data=null;crossTab.stk.failed=false;}, ricoReset:()=>crossTab.streamResets++, liveStop:()=>crossTab.liveStops++, resetAdmin:()=>{},
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},

@@ -16,7 +16,7 @@ const server = http.createServer(async (request, response)=>{
     response.end(body);
   } catch { response.writeHead(404); response.end(); }
 });
-const views = ['order','history','receipts','transfers','settings'];
+const views = ['order','history','receipts','transfers','stock','settings'];
 const zones = ['Main Storage','Kitchen','Minibar'];
 const titems = [
   {name:'Donuts', base:'piece', stock:{'Main Storage':10}},
@@ -24,6 +24,7 @@ const titems = [
   {name:'Oranges', base:'گرام', count:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
   {name:'Yellow Apple - سێوی زەرد', base:'گرام', count:{name:'کیلۆ',factor:1000}, stock:{'Main Storage':20000}},
   {name:'Yamama Pomegranate Molasses', base:'piece', stock:{'Main Storage':20}},
+  {name:'Paper Cups', base:'piece', buy:{name:'کارتۆن',factor:20}, stock:{'Main Storage':200}},
   {name:'Dark Soy Sauce', base:'piece', stock:{'Main Storage':10}},
   {name:'Light Soy Sauce', base:'piece', stock:{'Main Storage':10}},
 
@@ -52,8 +53,18 @@ async function run(){
       let data = {ok:true}, status = 200;
       if(key === 'bootstrap') data = {account:'rozha',name:'Rozh',views,suppliers:[{id:'produce',name:'Produce'}],items:[{id:'p',supplierId:'produce',name:'Potatoes'}],units:[],pins:[],history:[],draft:{cart:{},revision:0}};
       else if(key === 'auth/security') data = {required:false};
+      else if(key === 'receipts-settings/rico') data = {online:true,launcher:{online:true}};
+      else if(key === 'rico/watch') data = {ticket:'watch-fixture',expires:Date.now() + 60_000};
       else if(key === 'draft') data = {cart:{},revision:0};
+      else if(key === 'transfers/suppliers') data = {suppliers:[
+        {name:'Fruit supplier',items:['Oranges','Donuts']},{name:'Packaging supplier',items:['Paper Cups']},
+      ]};
       else if(key === 'transfers') data = {transfers, catalog:{zones,titems,at:date}, helper:{online:true}};
+      else if(key === 'stock') data = {at:date, zone:'Main Storage', items:[
+        {name:'Paper Cups',base:'piece',count:{name:'piece',factor:1},buy:{name:'کارتۆن',factor:20},main:30,
+          price:{perBase:1000,unit:'کارتۆن',cost:20000,day:'2026-11-21',supplier:'Produce'}},
+        {name:'Oranges',base:'گرام',count:{name:'کیلۆ',factor:1000},main:4000},
+      ]};
       else if(key === 'receipts') data = {receipts:[], helper:{online:true}, catalog:{zones,suppliers:['Produce'],items:[{name:'Lettuce',base:'kg'}]}};
       else if(key.startsWith('receipts/') && method === 'PUT'){
         receiptSaves.push(req.postDataJSON());
@@ -73,12 +84,35 @@ async function run(){
       }
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
+    const sampleFrame = await fs.readFile(path.resolve(__dirname,'../ricotta-map.jpg'));
+    await context.route('http://127.0.0.1:17692/**', route=>{
+      const headers = {
+        'Access-Control-Allow-Origin':'http://127.0.0.1:' + server.address().port,
+        'Access-Control-Expose-Headers':'X-Rico-Pointer',
+      };
+      if(route.request().method() === 'OPTIONS'){
+        return route.fulfill({status:204,headers:{...headers,'Access-Control-Allow-Methods':'GET','Access-Control-Allow-Headers':'Authorization'}});
+      }
+      if(route.request().url().endsWith('/ready')) return route.fulfill({status:204,headers});
+      assert.equal(route.request().headers().authorization,'Bearer watch-fixture','the local viewer receives a screen ticket, never the Orders session');
+      return route.fulfill({status:200,body:sampleFrame,headers:{...headers,'Content-Type':'image/jpeg','X-Rico-Pointer':'0.25,0.4,type'}});
+    });
     const page = await context.newPage(), errors=[];
     page.on('pageerror', e=>errors.push(e.message));
     await page.clock.setFixedTime(new Date(date));
     await page.goto('http://127.0.0.1:'+server.address().port);
     await page.locator('#orderResults').waitFor();
     await page.locator('#splash').waitFor({state:'detached'});
+    await page.evaluate(()=>goView('stock'));
+    await page.locator('.stk-value-total').waitFor();
+    assert.match(await page.locator('.stk-value-card').innerText(),/30,000/);
+    assert.match(await page.locator('.stk-value-card').innerText(),/1 without a usable price/);
+    await page.locator('[data-stk="Paper Cups"]').click();
+    assert.match(await page.locator('.stk-sheet').innerText(),/20,000/);
+    assert.match(await page.locator('.stk-sheet').innerText(),/1,000/);
+    assert.match(await page.locator('.stk-sheet').innerText(),/21 Nov|Nov 21/);
+    await page.keyboard.press('Escape');
+    await page.locator('.stk-sheet').waitFor({state:'detached'});
     await page.evaluate(()=>goView('transfers'));
     await page.locator('#tfTo').fill('Kitchen');
     await page.locator('#tfTo').press('Enter');
@@ -89,14 +123,35 @@ async function run(){
     await page.locator('#tfItem0').press('Enter');
     assert.equal(await page.evaluate(()=>tfFind(tf.id).lines.some(line=>line.item)),false,'reserved stock cannot enter this draft');
     await page.locator('[data-tf-mode=smart]').click();
+    await page.locator('[data-rr-activity]').click();
+    await page.locator('.rr-watch-screen img').waitFor();
+    await page.locator('.rr-watch-screen i[data-mode=type]').waitFor();
+    assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'25%');
+    await page.keyboard.press('Escape');
+    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
     const entry = page.locator('#tfSmartEntry');
     assert.equal(await entry.isDisabled(),false);
     assert.equal(await entry.getAttribute('placeholder'),'Oranges 5 kilos');
     assert.equal(await page.locator('#tfSmartDay, #tfSmartAdd').count(),0);
+    await entry.fill('/supplier');
+    await entry.press('Enter');
+    const suppliers = page.locator('.tf-supplier-sheet');
+    await suppliers.getByRole('button',{name:'Fruit supplier'}).waitFor();
+    assert.equal(await suppliers.getByRole('button',{name:'Packaging supplier'}).count(),1);
+    await suppliers.locator('input').fill('Fruit');
+    await suppliers.locator('input').press('Enter');
+    const supplierItems = page.locator('.tf-command-search:not(.tf-supplier-sheet):not(.out)');
+    await supplierItems.getByRole('button',{name:/Oranges/}).waitFor();
+    assert.equal(await supplierItems.getByRole('button',{name:/Paper Cups|Donuts/}).count(),0,'excludes other suppliers and reserved stock');
+    await supplierItems.getByRole('button',{name:/Oranges/}).click();
+    assert.equal(await entry.inputValue(),'Oranges ');
     for(const [input, pattern, selected] of [
       ['apple 5 kilos', /Yellow Apple/, true],
       ['yellow appple 5 kilo', /Yellow Apple/, true],
       ['oran 1.5', /Oranges.*Add 1.5/s, true],
+      ['oranges 2 ki', /Oranges.*Add 2 کیلۆ/s, true],
+      ['paper cups 2 car', /Paper Cups.*Add 2 کارتۆن/s, true],
+      ['Yellow Apple - سێوی زەرد 2 ki', /Yellow Apple.*Add 2 کیلۆ/s, true],
       ['yamama pomegranate 2 pieces', /Yamama Pomegranate Molasses/, true],
     ]){
       await entry.fill(input);
@@ -172,8 +227,11 @@ async function run(){
     await page.locator('[data-tf-mode=smart]').click();
     await page.locator('#tfTo').fill('Kitchen');
     await page.locator('#tfTo').press('Enter');
+    await page.locator('#tfYestLabel').click();
+    await page.keyboard.press('Alt+y');
+    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'false','the label and the former shortcut cannot turn it on');
     await page.locator('#tfYest').click();
-    await page.getByRole('button',{name:'Yes, for yesterday',exact:true}).click();
+    assert.equal(await page.locator('.modal-overlay').count(),0,'the explicit switch needs no confirmation');
     await page.locator('#tfYest[aria-checked=true]').waitFor();
     assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'true');
     await entry.fill('apple 2 kilos');
@@ -182,7 +240,7 @@ async function run(){
     assert.equal(await page.locator('#tfFrom').inputValue(),'Main Storage');
     assert.equal(await page.locator('.tf-route-locked bdi').innerText(),'Minibar');
     assert.equal(await entry.evaluate(el=>el === document.activeElement),true);
-    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'true');
+    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'false','a fresh draft starts with today');
     await page.locator('[data-tf-mode=manual]').click();
     assert.equal(await page.locator('#tfTo').inputValue(),'');
     assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'false');
@@ -229,6 +287,33 @@ async function run(){
     await page.locator('#tfChangeTo').click();
     await page.locator('input#tfTo').waitFor();
     await page.evaluate(()=>goView('receipts'));
+    const receipts = page.locator('#mainContent');
+    const slowNotice = receipts.locator('[data-rr-slow]');
+    await slowNotice.waitFor({state:'attached'});
+    await page.evaluate(()=>{
+      Object.defineProperty(navigator,'connection',{configurable:true,value:{effectiveType:'2g'}});
+      rrPaintNetwork();
+    });
+    await slowNotice.waitFor({state:'visible'});
+    await receipts.locator('[data-rr-activity]').click();
+    await page.locator('.rr-activity-sheet').waitFor();
+    await page.locator('.rr-watch-screen img').waitFor();
+    await page.keyboard.press('Escape');
+    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
+    const prepareStart = inline=>page.evaluate(inline=>{
+      state.settings.ricoInlineWindow = inline;
+      rr.data.helper = {online:false,launcher:{online:true}};
+      render();
+    }, inline);
+    await prepareStart(undefined);
+    await page.locator('[data-rico=real]').click();
+    await page.locator('.rr-watch-screen img').waitFor();
+    await page.keyboard.press('Escape');
+    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
+    await prepareStart(false);
+    await page.locator('[data-rico=real]').click();
+    await page.locator('[data-rico=stop]').waitFor();
+    assert.equal(await page.locator('.rr-activity-sheet, [data-rr-activity]').count(),0);
     const delivery = page.locator('#rrDelivery'), rate = page.locator('#rrRate');
     assert.equal(await delivery.count(),0);
     assert.equal(await rate.count(),0);

@@ -4,12 +4,19 @@
    are edited in Ricotta Restaurant. Excel, PDF and Numbers (a CSV that Numbers and Excel open) download
    the list. Depends on: state, t, esc, api, render, toast, canDo, openKitchenSheet, formatIraqDateTime,
    timeAgo, brandedWorkbook, deliverExcel, deliverPdf, deliverFile, safeFileName, fileDay, fileStamp. */
-const stk = {data:null, loading:false, failed:false, sort:'name'};
+const stk = {data:null, loading:false, failed:false, sort:'name', generation:0};
+function stockReset(){
+  clearTimeout(stk.tipTimer);
+  document.getElementById('stkTip')?.remove();
+  Object.assign(stk, {data:null, loading:false, failed:false, generation:stk.generation + 1});
+}
 async function stockLoad(){
   if(stk.loading) return;
   stk.loading = true;
-  const r = await apiCached('stock', {quiet:true});   // offline: the copy kept on this phone
+  const generation = stk.generation, r = await apiCached('stock', {quiet:true});   // offline: the copy kept on this phone
+  if(generation !== stk.generation) return;
   stk.loading = false;
+  if(r.stale) return;
   if(r.ok) offlineRead('stock', r.cachedAt || Date.now(), !!r.cachedAt);
   if(r.ok && Array.isArray(r.data?.items)){ stk.data = r.data; stk.failed = false; } else if(!stk.data) stk.failed = true;
   if(state.view === 'stock') render();
@@ -18,12 +25,32 @@ const stkNum = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:
 /* The amount in its counting unit (12 کارتۆن), with the usage unit beside it when they differ. */
 function stkAmount(i){
   const f = Number(i.count?.factor) || 1, unit = i.count?.name || i.base;
-  return {main:stkNum(i.main / f) + ' ' + unit, base:i.count && f !== 1 ? stkNum(i.main) + ' ' + i.base : ''};
+  return {main:stkNum(i.main / f) + ' ' + unit, base:i.main > 0 && i.count && f !== 1 ? stkNum(i.main) + ' ' + i.base : ''};
 }
 const stkLine = i=>{ const a = stkAmount(i); return a.main + (a.base ? ' (' + a.base + ')' : ''); };
 function stkWhen(at){ return at ? formatIraqDateTime(at, {day:'numeric', month:'short'}) : ''; }
 function stkBoughtLine(b){ return b ? t('stockBoughtLine')(stkWhen(b.at), b.supplier || '', stkNum(b.qty) + ' ' + (b.unit || '')) : t('stockNotIn60'); }
+const stkPurchaseDay = p=>p?.day ? stkWhen(p.day + 'T12:00:00+03:00') : '';
 function stkMovedLine(m){ return m ? t('stockMovedLine')(stkWhen(m.at), m.to || '', stkNum(m.qty) + ' ' + (m.unit || '')) : t('stockNotIn60'); }
+const stkFormatters = new Map();
+function stkMoney(n){
+  const locale = state.lang === 'ar' ? 'ar-IQ' : 'en-IQ', digits = n > 0 && n < 1 ? 3 : 0;
+  const key = locale + digits;
+  if(!stkFormatters.has(key)) stkFormatters.set(key, new Intl.NumberFormat(locale, {style:'currency', currency:'IQD', maximumFractionDigits:digits, minimumFractionDigits:0}));
+  return stkFormatters.get(key).format(n);
+}
+const stkValue = i=>Number.isFinite(i.price?.perBase * i.main) && i.price.perBase > 0 ? i.price.perBase * Math.max(i.main, 0) : null;
+const stkRead = at=>at ? formatIraqDateTime(at, {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : t('stockNotSet');
+function stkPriceRows(i, row){
+  const p = i.price;
+  if(!p) return row(t('stockLastPrice'), t('stockPriceMissing'));
+  const purchased = [stkPurchaseDay(p), p.supplier].filter(Boolean).join(' · ');
+  const formats = globalThis.RicottaTransfers.unitOptions(i).filter(u=>!u.unclear);
+  const amounts = p.perBase > 0 ? formats.map(u=>row('1 ' + u.name, stkMoney(p.perBase * u.factor))).join('') : '';
+  return row(t('stockPricePurchase'), purchased || t('stockNotSet')) +
+    (p.cost > 0 ? row(t('stockLastPrice'), stkMoney(p.cost) + ' / ' + (p.unit || i.base)) : '') +
+    amounts + (stkValue(i) === null ? '' : row(t('stockItemValue'), stkMoney(stkValue(i))));
+}
 function stkItems(){
   const q = foldText(String(state.catalogQuery || '').trim());
   const list = (stk.data?.items || []).filter(i=>!q || foldText(i.name).includes(q));
@@ -34,6 +61,13 @@ function renderStock(){
   if(!stk.data && !stk.loading) stockLoad();
   if(!stk.data) return stk.failed ? emptyState(t('loadFailed')) : loadingLines(6);
   const all = stk.data.items, empty = all.filter(i=>i.main <= 0).length, list = stkItems();
+  let priced = 0, missing = 0, estimate = 0;
+  for(const i of all){
+    if(i.main <= 0) continue;
+    const value = stkValue(i);
+    if(value === null) missing++;
+    else { priced++; estimate += value; }
+  }
   const exp = canDo('exports') ? `<div class="stk-exports" role="group" aria-label="${esc(t('exportBtn'))}">
       <button type="button" class="btn btn-ghost" data-stk-export="excel">${ICON_SHEET}<span>Excel</span></button>
       <button type="button" class="btn btn-ghost" data-stk-export="pdf">${NAV_ICONS.record}<span>PDF</span></button>
@@ -41,18 +75,25 @@ function renderStock(){
   // One line per item, like Ricotta Restaurant's Stock page: a dot (green: some left, red: none), the
   // name and the amount with its usage unit. Clicking (or Enter on) a row opens its details.
   const rows = list.map(i=>{
-    const none = i.main <= 0;
+    const none = i.main <= 0, a = stkAmount(i), value = stkValue(i);
     return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}" role="button" tabindex="0" aria-label="${esc(i.name)}, ${esc(stkLine(i))}">
       <i class="stk-dot" aria-hidden="true"></i>
       <span class="stk-name" dir="auto">${esc(i.name)}</span>
-      <b class="stk-amt" dir="auto">${esc(stkLine(i))}</b></div>`;
+      <span class="stk-qty"><b class="stk-amt"><bdi dir="ltr">${esc(none ? t('stockEmpty') : a.main)}</bdi></b>
+      ${a.base ? `<small><bdi dir="ltr">${esc(a.base)}</bdi> · ${esc(t('stockEquivalent'))}</small>` : ''}
+      ${!none && value !== null ? `<small>${esc(t('stockValueShort'))} · <bdi>${esc(stkMoney(value))}</bdi></small>` : ''}</span></div>`;
   }).join('');
-  return `<div class="stk-tools">${renderCatalogSearch()}
+  return `<div class="hero-card stk-value-card"><div class="hero-copy">
+      <div class="hero-eyebrow">${esc(t('stockMain'))}</div>
+      <div class="hero-sub">${esc(t('stockValueEstimate'))}</div>
+      <strong class="stk-value-total"><bdi>${esc(priced ? stkMoney(estimate) : t('stockPriceMissing'))}</bdi></strong>
+      <div class="hero-sub">${esc(t('stockValueCoverage')(priced, missing))}</div>
+    </div></div><div class="stk-tools">${renderCatalogSearch()}
       <div class="pill-seg stk-sort" role="radiogroup" aria-label="${esc(t('stockSort'))}">
         <button type="button" class="pill-seg-btn" role="radio" aria-checked="${stk.sort === 'name'}" data-stk-sort="name">${esc(t('stockSortName'))}</button>
         <button type="button" class="pill-seg-btn" role="radio" aria-checked="${stk.sort === 'low'}" data-stk-sort="low">${esc(t('stockSortLow'))}</button></div>
       ${exp}</div>
-    <div class="stk-meta-row"><p class="stk-meta">${esc(t('stockMeta')(stk.data.zone ? t('stockMain') : '', all.length, empty, stk.data.at ? timeAgo(new Date(stk.data.at).toISOString()) : ''))}</p>${stk.data.helper ? rrCheckBtn(stk.data.helper) : ''}</div>
+    <div class="stk-meta-row"><p class="stk-meta">${esc(t('stockMeta')(stk.data.zone ? t('stockMain') : '', all.length, empty, ''))}<br>${esc(t('stockLastRead'))} · ${esc(stkRead(stk.data.at))}</p>${stk.data.helper ? rrCheckBtn(stk.data.helper) : ''}</div>
     ${stk.data.helper ? rrCheckNote(stk.data.helper) : ''}
     ${!stk.data.at ? `<p class="rr-foot warn">${esc(t('rrNoCatalog'))}</p>` : ''}
     ${stk.data.at && stockIsOld(new Date(stk.data.at).toISOString()) ? `<p class="rr-foot stock-old">${esc(t('stockOldNote')(timeAgo(new Date(stk.data.at).toISOString())))}</p>` : ''}
@@ -88,7 +129,7 @@ function stockTip(row){
   document.getElementById('stkTip')?.remove();
   const tip = document.createElement('div');
   tip.id = 'stkTip'; tip.className = 'stk-tip'; tip.setAttribute('role', 'tooltip');
-  tip.innerHTML = `<b class="stk-tip-name" dir="auto">${esc(i.name)}</b><div><span>${esc(t('stockInMain'))}</span><b dir="auto">${esc(i.main <= 0 ? t('stockEmpty') : stkLine(i))}</b></div><div><span>${esc(t('stockLastBought'))}</span><b dir="auto">${esc(stkBoughtLine(i.lastBought))}</b></div><div><span>${esc(t('stockLastMoved'))}</span><b dir="auto">${esc(stkMovedLine(i.lastMoved))}</b></div>`;
+  tip.innerHTML = `<b class="stk-tip-name" dir="auto">${esc(i.name)}</b><div><span>${esc(t('stockInMain'))}</span><b dir="auto">${esc(i.main <= 0 ? t('stockEmpty') : stkLine(i))}</b></div><div><span>${esc(t('stockLastBought'))}</span><b dir="auto">${esc(i.price?.day ? [stkPurchaseDay(i.price), i.price.supplier].filter(Boolean).join(' · ') : stkBoughtLine(i.lastBought))}</b></div><div><span>${esc(t('stockLastMoved'))}</span><b dir="auto">${esc(stkMovedLine(i.lastMoved))}</b></div>`;
   document.body.appendChild(tip);
   const r = row.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
   const below = r.bottom + 8 + h < innerHeight;
@@ -100,12 +141,13 @@ function stockDetails(name){
   const i = stk.data?.items.find(x=>x.name === name); if(!i) return;
   document.getElementById('stkTip')?.remove();
   const a = stkAmount(i);
-  const fmt = u=>u ? `${u.name} = ${stkNum(u.factor)} ${i.base}` : t('stockNotSet');
+  const fmt = u=>u ? `\u20661 ${u.name} = ${stkNum(u.factor)} ${i.base}\u2069` : t('stockNotSet');
   const row = (k, v)=>`<div class="stk-d-row"><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`;
   openKitchenSheet('stk-sheet', `<div class="sel-title" dir="auto">${esc(i.name)}</div>
-    <div class="stk-d">${row(t('stockInMain'), i.main <= 0 ? t('stockEmpty') : a.main + (a.base ? ' (' + a.base + ')' : ''))}</div>
+    <div class="stk-d">${row(t('stockInMain'), i.main <= 0 ? t('stockEmpty') : a.main)}${a.base ? row(t('stockInBase'), a.base) : ''}${row(t('stockLastRead'), stkRead(stk.data.at))}</div>
     <div class="stk-d">${row(t('stockUsage'), i.base || t('stockNotSet'))}${row(t('stockBuy'), fmt(i.buy))}${row(t('stockCount'), fmt(i.count))}</div>
-    <div class="stk-d">${row(t('stockLastBought'), stkBoughtLine(i.lastBought))}${row(t('stockLastMoved'), stkMovedLine(i.lastMoved))}</div>
+    <div class="stk-d">${stkPriceRows(i, row)}</div>
+    <div class="stk-d">${i.price?.day ? '' : row(t('stockLastBought'), stkBoughtLine(i.lastBought))}${row(t('stockLastMoved'), stkMovedLine(i.lastMoved))}</div>
     <p class="stk-note">${esc(t('stockReadOnly'))}</p>`, i.name);
 }
 async function stockExport(kind){
