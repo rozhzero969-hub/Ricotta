@@ -214,7 +214,7 @@ function rrStockNote(at, learntAt){
 function rrRicoBar(h, copyAt){
   if(!h) return '';
   const on = h.online && !h.stopped && !rrOffline();
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${on && isRozha() && state.settings?.ricoInlineWindow !== false ? `<button type="button" class="rr-ctl" data-rr-activity>${esc(t('rrActivityTitle'))}</button>` : ''}${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}<p class="rr-ctl-note warn" data-rr-slow hidden role="status">${esc(t('rrSlowConnection'))}</p></section>`;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${on && isRozha() && state.settings?.ricoInlineWindow !== false ? `<button type="button" class="rr-ctl" data-rr-activity aria-haspopup="dialog" aria-expanded="false">${esc(t('rrActivityTitle'))}</button>` : ''}${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}<p class="rr-ctl-note warn" data-rr-slow hidden role="status">${esc(t('rrSlowConnection'))}</p></section>`;
 }
 /* Check now: Rico reads Ricotta Restaurant's suppliers, zones, items and units straight away (he also
    does it by himself every 10 minutes). Only while he is on; one check at a time. */
@@ -252,17 +252,150 @@ function rrCheckSummary(c, when){
   return t('rrCheckFound')(when, parts.join(sep)) + names(t('rrCheckNewLabel'), it.addedNames) + names(t('rrCheckChangedLabel'), it.changedNames);
 }
 const RR_WATCH_URL = 'http://127.0.0.1:17692';
+let rrCloseWatch = null;
+function rrWatchPopover(trigger, label, html, floating = false){
+  const findAnchor = ()=>document.querySelector('#mainContent [data-rr-activity]') ||
+    document.querySelector('#mainContent .rr-ricobar [data-rico]');
+  if(!floating){
+    const wasOpen = document.querySelector('.rr-watch-chooser');
+    closeSelSheet();
+    if(wasOpen) return null;
+  }
+
+  const el = document.createElement('div');
+  el.className = 'rr-watch-popover ' + (floating ? 'rr-watch-floating' : 'rr-watch-chooser');
+  el.id = floating ? 'rrWatchFloating' : 'rrWatchModes';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', label);
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  const view = state.view, session = apiSession();
+  const events = new AbortController();
+  let anchor, resizeObserver, renderObserver;
+  const expand = (button, open)=>{
+    button?.setAttribute('aria-expanded', String(open));
+    if(open) button?.setAttribute('aria-controls', el.id);
+    else button?.removeAttribute('aria-controls');
+  };
+  const dismiss = (focus = false)=>{
+    events.abort();
+    resizeObserver?.disconnect();
+    renderObserver?.disconnect();
+    expand(anchor, false);
+    el.remove();
+    if(activeSelSheet === close) activeSelSheet = null;
+    if(rrCloseWatch === close) rrCloseWatch = null;
+    if(focus) (findAnchor() || trigger)?.focus({preventScroll:true});
+  };
+  const close = ()=>dismiss();
+  const active = ()=>{
+    if(el.isConnected && (floating || state.view === view) && apiSessionMatches(session)) return true;
+    if(el.isConnected) close();
+    return false;
+  };
+  const place = ()=>{
+    if(!active()) return;
+    const next = findAnchor() || (trigger?.isConnected ? trigger : null);
+    if(next !== anchor){
+      if(!floating) { expand(anchor, false); expand(next, true); }
+      anchor = next;
+    }
+    const rect = anchor?.getBoundingClientRect(), width = el.offsetWidth, height = el.offsetHeight;
+    const gutter = 12, gap = 8;
+    const canAnchor = rect && rect.bottom > 0 && rect.top < innerHeight;
+    if(!canAnchor){
+      if(!floating){ close(); return; }
+      const bottom = document.querySelector('.bottom-stack')?.getBoundingClientRect().height || 0;
+      el.style.left = (isRtl() ? gutter : innerWidth - width - gutter) + 'px';
+      el.style.top = Math.max(gutter, innerHeight - height - bottom - gutter) + 'px';
+      return;
+    }
+    const left = getComputedStyle(anchor).direction === 'rtl' ? rect.left : rect.right - width;
+    el.style.left = Math.max(gutter, Math.min(left, innerWidth - width - gutter)) + 'px';
+    const below = innerHeight - rect.bottom, above = rect.top;
+    const top = below >= height + gap || below >= above ? rect.bottom + gap : rect.top - height - gap;
+    el.style.top = Math.max(gutter, Math.min(top, innerHeight - height - gutter)) + 'px';
+  };
+
+  if(floating) rrCloseWatch = close;
+  else activeSelSheet = close;
+  place();
+  if(!el.isConnected) return null;
+  const signal = events.signal;
+  resizeObserver = new ResizeObserver(place);
+  resizeObserver.observe(el);
+  renderObserver = new MutationObserver(()=>{
+    observePage();
+    place();
+  });
+  const observePage = ()=>{
+    renderObserver.disconnect();
+    renderObserver.observe(document.getElementById('app'), {childList:true});
+    const content = document.getElementById('mainContent');
+    if(content) renderObserver.observe(content, {childList:true});
+  };
+  observePage();
+  addEventListener('resize', place, {signal});
+  addEventListener('scroll', place, {capture:true, signal});
+  addEventListener('pointerdown', event=>{
+    if(!floating && !el.contains(event.target) && !anchor?.contains(event.target)) close();
+  }, {capture:true, signal});
+  addEventListener('keydown', event=>{
+    if(event.key !== 'Escape' || modalAboveSheet() || (floating && !el.contains(document.activeElement))) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    dismiss(true);
+  }, {capture:true, signal});
+  const button = el.querySelector('[data-close-activity]');
+  if(button) button.onclick = ()=>dismiss(true);
+  (button || el.querySelector('button'))?.focus({preventScroll:true});
+  requestAnimationFrame(()=>el.classList.add('positioned'));
+  return {el, active, signal, close};
+}
 function rrOpenActivity(trigger, {starting = false} = {}){
   if(!isRozha() || !['receipts','transfers'].includes(state.view)) return;
-  const label = t('rrActivityTitle'), session = apiSession();
-  const {el, close} = openKitchenSheet('rr-activity-sheet', `<div class="sched-head"><div class="sel-title">${esc(label)}</div>
-    <button type="button" class="btn btn-ghost" data-close-activity aria-label="${esc(t('cancel'))}">×</button></div>
-    <p class="rr-ctl-note" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
-    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`, label, {returnFocus:trigger});
+  const label = t('rrActivityTitle');
+  const chooser = rrWatchPopover(trigger, label, `<div class="rr-watch-heading"><strong>${esc(label)}</strong></div>
+    <button type="button" class="rr-watch-choice" data-watch-mode="large"><b>${esc(t('rrWatchLarge'))}</b><small>${esc(t('rrWatchLargeHint'))}</small></button>
+    <button type="button" class="rr-watch-choice" data-watch-mode="floating"><b>${esc(t('rrWatchFloating'))}</b><small>${esc(t('rrWatchFloatingHint'))}</small></button>`);
+  chooser?.el.querySelectorAll('[data-watch-mode]').forEach(button=>{ button.onclick = ()=>{
+    chooser.close();
+    rrShowActivity(trigger, button.dataset.watchMode, starting);
+  }; });
+}
+function rrWatchLarge(trigger, label, html){
+  const {el, close} = openKitchenSheet('rr-watch-large', html, label, {returnFocus:trigger});
+  const events = new AbortController(), session = apiSession(), view = state.view;
+  const active = ()=>el.isConnected && !el.classList.contains('out') && state.view === view && apiSessionMatches(session);
+  const observer = new MutationObserver(()=>{
+    if(active()) return;
+    observer.disconnect();
+    events.abort();
+    if(el.isConnected && !el.classList.contains('out')) close();
+  });
+  observer.observe(el, {attributes:true, attributeFilter:['class']});
+  observer.observe(document.getElementById('app'), {attributes:true, attributeFilter:['data-screen']});
+  rrCloseWatch = close;
+  events.signal.addEventListener('abort', ()=>{ if(rrCloseWatch === close) rrCloseWatch = null; }, {once:true});
+  const button = el.querySelector('[data-close-activity]');
+  button.onclick = ()=>close();
+  button.focus({preventScroll:true});
+  return {el, active, signal:events.signal};
+}
+function rrShowActivity(trigger, mode, starting){
+  rrCloseWatch?.();
+  const label = t('rrActivityTitle');
+  const html = `<header class="rr-watch-heading"><strong>${esc(label)}</strong>
+    <button type="button" class="rr-ctl" data-close-activity aria-label="${esc(t('rrClosePhoto'))}">×</button></header>
+    <p class="rr-watch-status" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
+    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`;
+  const viewer = mode === 'large' ? rrWatchLarge(trigger, label, html) : rrWatchPopover(trigger, label, html, true);
+  if(!viewer) return;
+  const {el, active, signal} = viewer;
   const panel = el.querySelector('.rr-watch-screen'), image = panel.querySelector('img'), cursor = panel.querySelector('i');
   const status = el.querySelector('[data-watch-status]');
   let picture = '', ticket = null, expires = 0;
-  const active = ()=>el.isConnected && !el.classList.contains('out') && apiSessionMatches(session);
   const clear = ()=>{
     if(picture) URL.revokeObjectURL(picture);
     picture = '';
@@ -270,10 +403,20 @@ function rrOpenActivity(trigger, {starting = false} = {}){
     panel.hidden = true;
     cursor.hidden = true;
   };
-  el.querySelector('[data-close-activity]').onclick = ()=>close();
-  const local = (path, headers)=>fetch(RR_WATCH_URL + path, {
-    headers, cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
-  });
+  signal.addEventListener('abort', clear, {once:true});
+  const local = async (path, frameTicket = '')=>{
+    const bridge = window.webkit?.messageHandlers?.ricoWatch;
+    if(bridge){
+      const frame = await bridge.postMessage({path, ticket:frameTicket});
+      const headers = frame.image ? {'Content-Type':'image/jpeg', 'X-Rico-Pointer':frame.pointer || ''} : {};
+      const body = frame.image ? Uint8Array.from(atob(frame.image), byte=>byte.charCodeAt(0)) : null;
+      return new Response(body, {status:frame.status, headers});
+    }
+    return fetch(RR_WATCH_URL + path, {
+      headers:frameTicket ? {Authorization:'Bearer ' + frameTicket} : undefined,
+      cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
+    });
+  };
   const delay = ms=>new Promise(resolve=>setTimeout(resolve, ms));
   void (async ()=>{
     try{
@@ -297,7 +440,7 @@ function rrOpenActivity(trigger, {starting = false} = {}){
           ({ticket, expires} = res.data);
         }
         try{
-          const res = await local('/frame', {Authorization:'Bearer ' + ticket});
+          const res = await local('/frame', ticket);
           if(!active() || document.hidden) continue;
           if(res.status === 401){ clear(); status.textContent = t('rrWatchUnavailable'); break; }
           if(res.status === 204){
@@ -370,7 +513,7 @@ function attachRicoBar(){
     if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
     rrRepaintKeep();
     if(res.ok && action !== 'stop' && state.view === view && state.settings?.ricoInlineWindow !== false){
-      rrOpenActivity(document.querySelector('[data-rico="' + action + '"]'), {starting:true});
+      rrOpenActivity(document.querySelector('#mainContent [data-rr-activity], #mainContent [data-rico="' + action + '"]'), {starting:true});
     }
   });
   document.querySelectorAll('[data-to-history]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.toHistory; goView('history'); });
@@ -1012,17 +1155,17 @@ async function rrSendNow(r, keepForm, gen){
 
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Save for this
    receipt or one with the same invoice): that is shown and confirmed before it goes. */
-async function rrPost(r, codes){
-  const gen = rr.gen;
+async function rrPost(r, codes, retryVersion){
+  const gen = rr.gen, intent = retryVersion === undefined ? {} : {retry:true, version:retryVersion};
   codes = [...new Set(codes)];
-  let res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:codes}});
+  let res = await api(`receipts/${r.id}/send`, {method:'POST', body:{...intent, confirm:codes}});
   if(gen !== rr.gen || res.stale) return null;
   if(!res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
     if(!await showConfirm(rrSummary(r, more.map(w=>rrWarnLine(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
     if(gen !== rr.gen) return null;
-    res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
+    res = await api(`receipts/${r.id}/send`, {method:'POST', body:{...intent, confirm:[...codes, ...more.map(w=>w.code)]}});
   }
   return gen === rr.gen && !res.stale ? res : null;
 }
@@ -1030,8 +1173,7 @@ async function rrPost(r, codes){
 /* ---------- A sent receipt ---------- */
 function renderReceiptView(){
   const r = rrFind(rr.id); if(!r){ rr.page = 'edit'; return renderReceipts(); }
-  const photos = rr.photos[r.id];
-  if(r.photos.length && (!photos || photos.count !== r.photos.length)) rrLoadPhotos(r);
+  const photos = rrReceiptPhotos(r);
   const head = r.status === 'saved'
     ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'))}</b><small>${esc(t('rrFindIt')(r.invoice, rrWhen(r.savedAt)))}</small></div>`
     : `<div class="rr-state ${rrIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('rrStatusHint_' + r.status))}</small></div></div>`;
@@ -1062,14 +1204,22 @@ function renderReceiptView(){
       ${r.status === 'review' ? `<button type="button" class="btn btn-ghost" id="rrCancel">${esc(t('rrCancelReceipt'))}</button><button type="button" class="btn btn-primary" id="rrApprove">${esc(t('rrApprove'))}</button>` : ''}
       ${['queued','problem'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="rrCancel">${esc(t('rrCancelReceipt'))}</button>` : ''}
       ${['problem','cancelled','saved'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="rrCopy">${esc(t('rrCopy'))}</button>` : ''}
-      ${r.status === 'problem' && !rrIsPractice(r) ? `<button type="button" class="btn btn-primary" id="rrRetry">${esc(t('rrRetry'))}</button>` : ''}
+      ${['review','problem'].includes(r.status) && !rrIsPractice(r) ? `<button type="button" class="btn ${r.status === 'review' ? 'btn-ghost' : 'btn-primary'}" id="rrRetry">${esc(t('rrRetry'))}</button>` : ''}
     </div>
   </div>`;
 }
-async function rrLoadPhotos(r){
-  rr.photos[r.id] = {count:r.photos.length, list:rr.photos[r.id]?.list || []};
-  const res = await api(`receipts/${r.id}/photos`, {quiet:true});
-  if(res.ok && Array.isArray(res.data?.photos)){ rr.photos[r.id].list = res.data.photos; rrPaintPhotos(r); }
+function rrReceiptPhotos(r){
+  const cached = rr.photos[r.id];
+  if(!r.photos.length) return null;
+  if(cached && cached.sentAt === r.sentAt && cached.count === r.photos.length) return cached;
+  const photos = {sentAt:r.sentAt, count:r.photos.length, list:[]};
+  rr.photos[r.id] = photos;
+  void api(`receipts/${r.id}/photos`, {quiet:true}).then(res=>{
+    if(rr.photos[r.id] !== photos || !res.ok || !Array.isArray(res.data?.photos)) return;
+    photos.list = res.data.photos.filter(p=>!r.sentAt || !p.at || Date.parse(p.at) >= Date.parse(r.sentAt));
+    rrPaintPhotos(r);
+  });
+  return photos;
 }
 function attachReceiptView(){
   const r = rrFind(rr.id); if(!r) return;
@@ -1080,11 +1230,12 @@ function attachReceiptView(){
     // The limit is in dinars: a dollar receipt is compared at its rate.
     const iqd = r.currency === 'USD' ? (Number(r.total) || 0) * (Number(r.rate) || 0) : Number(r.total) || 0;
     const big = iqd >= (rrLimits().bigTotal || Infinity);
+    const version = r.version;
     const ok = action === 'approve'
       ? await showConfirm(rrSummary(r, ws) + (big ? `<p class="cf-alert">${esc(t('rrBigAgain')(rrNum(Math.round(iqd))))}</p>` : ''), {title:t('rrApproveTitle'), okLabel:t('rrApprove'), okClass:'btn-primary', enter:true, wide:true})
       : await showConfirm(esc(t('rrCancelAsk')), {okLabel:t('rrCancelReceipt'), okClass:'btn-danger'});
     if(!ok) return;
-    const res = await api(`receipts/${r.id}/${action}`, {method:'POST', body:{}});
+    const res = await api(`receipts/${r.id}/${action}`, {method:'POST', body:action === 'approve' ? {version} : {}});
     if(!res.ok){ toast(res.data?.error === 'too_late' ? t('rrTooLate') : t('saveFailed'), 'error'); rrLoad(true); return; }
     Object.assign(r, res.data); render();
   };
@@ -1098,7 +1249,7 @@ function attachReceiptView(){
   };
   const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel');
   const cp = document.getElementById('rrCopy'); if(cp) cp.onclick = ()=>rrNewDraft(r);
-  const rt = document.getElementById('rrRetry'); if(rt) rt.onclick = ()=>rrRetry(r);
+  const rt = document.getElementById('rrRetry'); if(rt) rt.onclick = ()=>withBusy(rt, ()=>rrRetry(r));
   attachLightbox();
 }
 
@@ -1130,12 +1281,14 @@ function rrScanPhoto(r, btn){
 /* Retry: the same receipt to Rico again, after it is checked against the lists as they are now. If it
    had been approved, Rico may already have pressed Save, so Ricotta Restaurant is to be checked first. */
 async function rrRetry(r){
+  const version = r.version;
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(rrErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
   const ws = c.warnings.map(w=>rrWarnLine(w, r)).filter(Boolean);
-  const msg = (r.pressedAt || r.approvedAt ? `<p class="cf-alert">${esc(t('rrRetryCheckFirst'))}</p>` : '') + rrSummary(r, ws);
+  const msg = (r.pressedAt || r.approvedAt ? `<p class="cf-alert">${esc(t('rrRetryCheckFirst'))}</p>` : '') +
+    `<p>${esc(t('rrRetryFreshPhoto'))}</p>` + rrSummary(r, ws);
   if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary', wide:true, enter:!(r.pressedAt || r.approvedAt)})) return;
-  const res = await rrPost(r, c.warnings.map(w=>w.code));
+  const res = await rrPost(r, c.warnings.map(w=>w.code), version);
   if(!res) return;
   if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(e=>rrErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
   Object.assign(r, res.data); toast(t('rrSent')); render();
@@ -1296,9 +1449,7 @@ function renderRicoActivity(){
 const rrPhotoLabel = k=> t('rrPhoto_' + k);
 function rrHistPhotos(r){
   if(!r.photos.length) return '';
-  const got = rr.photos[r.id];
-  if(!got || got.count !== r.photos.length) rrLoadPhotos(r);
-  const list = rr.photos[r.id]?.list || [];
+  const list = rrReceiptPhotos(r)?.list || [];
   if(!list.length) return `<div class="rr-hist-photos" data-rr-photos="${esc(r.id)}">${loadingLines(1)}</div>`;
   return `<div class="rr-hist-photos" data-rr-photos="${esc(r.id)}">${list.map((p, i)=>`<figure><button type="button" class="rr-hist-photo" data-lb="${esc(r.id)}" data-lb-i="${i}" aria-label="${esc(rrPhotoLabel(p.kind))}"><img src="${esc(p.url)}" alt="${esc(rrPhotoLabel(p.kind))}" loading="lazy"></button><figcaption>${esc(rrPhotoLabel(p.kind))}</figcaption></figure>`).join('')}</div>`;
 }

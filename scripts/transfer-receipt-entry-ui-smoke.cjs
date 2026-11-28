@@ -124,11 +124,27 @@ async function run(){
     assert.equal(await page.evaluate(()=>tfFind(tf.id).lines.some(line=>line.item)),false,'reserved stock cannot enter this draft');
     await page.locator('[data-tf-mode=smart]').click();
     await page.locator('[data-rr-activity]').click();
+    await page.getByRole('button',{name:/Floating view/}).click();
     await page.locator('.rr-watch-screen img').waitFor();
     await page.locator('.rr-watch-screen i[data-mode=type]').waitFor();
+    const [watchButton, watchPopup] = await Promise.all([
+      page.locator('#mainContent [data-rr-activity]').boundingBox(),
+      page.locator('.rr-watch-popover').boundingBox(),
+    ]);
+    assert.ok(watchPopup.width <= 380 && watchPopup.y >= watchButton.y + watchButton.height,
+      'Watch Rico opens as a compact popup underneath its button');
     assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'25%');
+    await page.setViewportSize({width:390,height:720});
+    await page.waitForFunction(()=>{
+      const popup = document.getElementById('rrWatchFloating');
+      if(!popup) return false;
+      const box = popup.getBoundingClientRect();
+      return box.x >= 11 && box.right <= innerWidth - 11 && box.y >= 11 && box.bottom <= innerHeight - 11;
+    });
+    await page.setViewportSize({width:1320,height:900});
     await page.keyboard.press('Escape');
-    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
+    await page.locator('.rr-watch-popover').waitFor({state:'detached'});
+    assert.equal(await page.locator('#mainContent [data-rr-activity]').getAttribute('aria-expanded'),'false');
     const entry = page.locator('#tfSmartEntry');
     assert.equal(await entry.isDisabled(),false);
     assert.equal(await entry.getAttribute('placeholder'),'Oranges 5 kilos');
@@ -295,11 +311,20 @@ async function run(){
       rrPaintNetwork();
     });
     await slowNotice.waitFor({state:'visible'});
+    await page.evaluate(image=>{
+      window.webkit = {messageHandlers:{ricoWatch:{async postMessage({path,ticket}){
+        if(path === '/ready' && !ticket) return {status:204};
+        if(path === '/frame' && ticket === 'watch-fixture') return {status:200,image,pointer:'0.6,0.5,type'};
+        throw new Error('Unexpected Watch Rico message');
+      }}}};
+    }, sampleFrame.toString('base64'));
     await receipts.locator('[data-rr-activity]').click();
-    await page.locator('.rr-activity-sheet').waitFor();
+    await page.getByRole('button',{name:/Large view/}).click();
+    await page.locator('.rr-watch-large[role="dialog"], .rr-watch-large [role="dialog"]').waitFor();
     await page.locator('.rr-watch-screen img').waitFor();
+    assert.equal(await page.locator('.rr-watch-screen i').evaluate(e=>e.style.left),'60%','Mac viewer uses the native bridge');
     await page.keyboard.press('Escape');
-    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
+    await page.locator('.rr-watch-large').waitFor({state:'detached'});
     const prepareStart = inline=>page.evaluate(inline=>{
       state.settings.ricoInlineWindow = inline;
       rr.data.helper = {online:false,launcher:{online:true}};
@@ -307,13 +332,20 @@ async function run(){
     }, inline);
     await prepareStart(undefined);
     await page.locator('[data-rico=real]').click();
+    await page.getByRole('button',{name:/Floating view/}).click();
     await page.locator('.rr-watch-screen img').waitFor();
-    await page.keyboard.press('Escape');
-    await page.locator('.rr-activity-sheet').waitFor({state:'detached'});
+    await page.evaluate(()=>goView('stock'));
+    await page.locator('.stk-value-total').waitFor();
+    await page.locator('.rr-watch-floating img').waitFor();
+    await page.evaluate(()=>goView('receipts'));
+    await page.locator('#rrItem0').focus();
+    assert.equal(await page.locator('.rr-watch-floating img').isVisible(),true,'typing and switching screens keeps the floating viewer open');
+    await page.locator('.rr-watch-floating [data-close-activity]').click();
+    await page.locator('.rr-watch-popover').waitFor({state:'detached'});
     await prepareStart(false);
     await page.locator('[data-rico=real]').click();
     await page.locator('[data-rico=stop]').waitFor();
-    assert.equal(await page.locator('.rr-activity-sheet, [data-rr-activity]').count(),0);
+    assert.equal(await page.locator('.rr-watch-popover, [data-rr-activity]').count(),0);
     const delivery = page.locator('#rrDelivery'), rate = page.locator('#rrRate');
     assert.equal(await delivery.count(),0);
     assert.equal(await rate.count(),0);

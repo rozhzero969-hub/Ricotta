@@ -93,12 +93,21 @@ export async function lastPrices(db: any) {
   for (const r of data ?? []) for (const l of r.lines ?? []) { const k = `${l.item}|${l.unit}|${r.currency}`; if (!(k in last)) last[k] = l.cost; }
   return last;
 }
+function receiptRetry(r: any) {
+  return r.sent_at && (r.log ?? []).find((entry: any) => entry.retry === true && Date.parse(entry.at) === Date.parse(r.sent_at));
+}
+function receiptPhotos(r: any) {
+  return (r.photos ?? []).filter((photo: any) => !r.sent_at || !photo.at || Date.parse(photo.at) >= Date.parse(r.sent_at));
+}
 export function view(r: any, withLog = true) {
   return {
     id: r.id, by: r.created_by, source: r.source, mode: r.mode ?? null, status: r.status, supplier: r.supplier, invoice: r.invoice, zone: r.zone,
     currency: r.currency, rate: r.rate == null ? null : Number(r.rate), delivery: r.delivery == null ? null : Number(r.delivery),
     lines: r.lines ?? [], total: r.total == null ? null : Number(r.total), warnings: r.warnings ?? [], problem: r.problem,
-    finance: r.finance, photos: (r.photos ?? []).map((p: any) => ({ kind: p.kind, at: p.at })), log: withLog ? r.log ?? [] : undefined,
+    finance: r.finance, photos: receiptPhotos(r).map((p: any) => ({ kind: p.kind, at: p.at })),
+    retry: !!receiptRetry(r), previousDraftPhoto: receiptRetry(r)?.previousDraftPhoto === true ||
+      (!!r.sent_at && (r.photos ?? []).some((p: any) =>
+        (p.kind === "before" || p.kind === "problem") && Date.parse(p.at) < Date.parse(r.sent_at))), log: withLog ? r.log ?? [] : undefined,
     approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, savedAt: r.saved_at, pressedAt: r.pressed_at ?? null, version: r.version,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
@@ -236,8 +245,8 @@ export async function ricoCommand(db: any, action: string, by: string) {
 }
 async function tell(db: any, r: any, event: string) { try { await notify(db, r, event); } catch (e) { console.error("telegram notify", event, e); } }
 
-export async function sendReceipt(db: any, r: any, who: string, confirm: unknown, source?: string): Promise<Done> {
-  if (!["draft", "problem"].includes(r.status)) return { error: "already_sent" };
+export async function sendReceipt(db: any, r: any, who: string, confirm: unknown, source?: string, retry = false): Promise<Done> {
+  if (!["draft", "problem"].includes(r.status) && !(retry && r.status === "review")) return { error: "already_sent" };
   if (r.status === "draft" && r.created_by !== who) return { error: "forbidden", status: 403 };
   const [h, catalog, last] = await Promise.all([helperRow(db), catalogOf(db), lastPrices(db)]);
   const c = R.check(view(r), catalog, limitsOf(h), last);
@@ -249,15 +258,29 @@ export async function sendReceipt(db: any, r: any, who: string, confirm: unknown
   const warnings = [...c.warnings];
   let pressed = r.pressed_at;
   if (!pressed && r.invoice) {
-    const { data: o } = await rr(db, "receipts").select("pressed_at").eq("supplier", r.supplier).eq("invoice", r.invoice).neq("id", r.id).eq("status", "problem").not("pressed_at", "is", null).limit(1);
+    const { data: o } = await rr(db, "receipts").select("pressed_at").eq("supplier", r.supplier).eq("invoice", r.invoice).neq("id", r.id).in("status", ["problem", "cancelled"]).not("pressed_at", "is", null).limit(1);
     pressed = o?.[0]?.pressed_at ?? null;
   }
   if (pressed) warnings.push({ code: "pressed", at: pressed });
   if (warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings } };
+  const sentAt = now(), retrying = r.status !== "draft";
+  let previousDraftPhoto = false;
+  if (retrying && r.invoice) {
+    // Copying/cancelling in Orders does not remove the unsaved form in Restaurant. The helper
+    // still checks the live supplier, invoice and storage before clearing any legacy draft.
+    const { data: previous, error } = await rr(db, "receipts").select("photos").eq("supplier", r.supplier)
+      .eq("invoice", r.invoice).eq("zone", r.zone).neq("id", r.id).eq("status", "cancelled")
+      .order("updated_at", { ascending: false }).limit(20);
+    if (error) return { error: "send_failed", status: 503 };
+    previousDraftPhoto = (previous ?? []).some((row: any) => (row.photos ?? []).some((p: any) =>
+      (p.kind === "before" || p.kind === "problem") && Date.parse(p.at) < Date.parse(sentAt)));
+  }
+  const event = logEntry(retrying ? `Retry requested by ${nameOf(who)}` : `Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}`, who);
   const { data: sent, error } = await rr(db, "receipts").update({
-    status: "queued", total: c.total, warnings, problem: null, pressed_at: null, sent_at: now(), version: r.version + 1, updated_at: now(),
+    status: "queued", total: c.total, warnings, problem: null, pressed_at: null, approved_at: null, approved_by: null,
+    sent_at: sentAt, version: r.version + 1, updated_at: sentAt,
     ...(source ? { source } : {}),
-    log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}`, who)],
+    log: [...(r.log ?? []), { ...event, at: sentAt, ...(retrying ? { retry: true, previousDraftPhoto } : {}) }],
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
   if (error?.code === "23505") return { error: "invoice_already_sent" };
   if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };
@@ -266,8 +289,9 @@ export async function sendReceipt(db: any, r: any, who: string, confirm: unknown
   if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(told); else await told;
   return { row: sent };
 }
-export async function approveReceipt(db: any, r: any, who: string): Promise<Done> {
+export async function approveReceipt(db: any, r: any, who: string, version?: unknown): Promise<Done> {
   if (r.status !== "review") return { error: "not_waiting" };
+  if ((version !== undefined || receiptRetry(r)) && version !== r.version) return { error: "changed_elsewhere" };
   const { data, error } = await rr(db, "receipts").update({
     status: "approved", approved_by: who, approved_at: now(), version: r.version + 1, updated_at: now(),
     log: [...(r.log ?? []), logEntry(`Approved by ${nameOf(who)}`, who)],
@@ -285,7 +309,7 @@ export async function cancelReceipt(db: any, r: any, who: string): Promise<Done>
 }
 export async function photoLinks(db: any, r: any, kinds?: string[]) {
   const out = [];
-  for (const p of r.photos ?? []) {
+  for (const p of receiptPhotos(r)) {
     if (kinds && !kinds.includes(p.kind)) continue;
     const { data: s } = await db.storage.from(BUCKET).createSignedUrl(p.path, 3600);
     if (s?.signedUrl) out.push({ kind: p.kind, at: p.at, url: s.signedUrl });
@@ -355,8 +379,9 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
     if (M === "GET" && action === "photos") return json({ photos: await photoLinks(db, r) });
     if (M !== "POST" || !action) return fail("not_found", 404);
     const who = ctx.account ?? "rozha";
-    const res = action === "send" ? await sendReceipt(db, r, who, b.confirm)
-      : action === "approve" ? await approveReceipt(db, r, who)
+    if (action === "send" && b.retry === true && b.version !== r.version) return fail("changed_elsewhere", 409);
+    const res = action === "send" ? await sendReceipt(db, r, who, b.confirm, undefined, b.retry === true)
+      : action === "approve" ? await approveReceipt(db, r, who, b.version)
       : action === "cancel" ? await cancelReceipt(db, r, who) : null;
     if (!res) return fail("not_found", 404);
     return res.error ? json({ error: res.error, ...(res.extra ?? {}) }, res.status ?? 409) : json(view(res.row));
@@ -580,6 +605,8 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
       if (b.pressed === true) { if (!["approved", "saving"].includes(r.status)) return fail("bad_status", 409); patch.pressed_at = now(); }
       if (to && to !== r.status) {
         if (!(HELPER_NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
+        if (to === "review" && receiptRetry(r) && !receiptPhotos(r).some((p: any) =>
+          p.kind === "before" && Date.parse(p.at) >= Date.parse(r.sent_at))) return fail("fresh_photo_required", 409);
         patch.status = to;
         if (to === "problem") patch.problem = t(b.problem || "Rico stopped. See his notes.", 500);
         if (to === "saved") { patch.saved_at = now(); patch.finance = b.finance && typeof b.finance === "object" ? { tab: t(b.finance.tab, 80), month: t(b.finance.month, 7), no: Number.isSafeInteger(b.finance.no) ? b.finance.no : null, checked: b.finance.checked !== false } : null; }

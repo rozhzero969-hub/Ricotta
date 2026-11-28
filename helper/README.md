@@ -33,5 +33,5 @@ is shown as stopped and requires review before another attempt.
 `node helper/rico-helper.mjs --practice` does everything except save: each receipt is filled in,
 photographed and discarded, and shows as stopped with "Practice run" in the app.
 
-He never presses Add expense item, Return, Waste, the delivery or missing-item buttons in Invoices, or
-anything that edits or deletes, and never touches a half-made receipt that was already open.
+**Retry** keeps the existing receipt in Orders. Rico clears the matching unsaved Restaurant draft,
+fills it again, and sends a new photo for approval. Forms that belong to another receipt stay in place.

@@ -239,7 +239,7 @@ async function receiptsNow(d: any, chat: number) {
   const stopped = rows.filter((r: any) => r.status === "problem" && r.mode !== "practice" && !/^Practice run/.test(r.problem ?? ""));
   const line = (r: any) => `<b>${esc(r.supplier)}</b> #${esc(r.invoice)} · ${money(Number(r.total), r.currency)}`;
   if (!review.length && !queued.length && !saved.length && !stopped.length) { await say(chat, "Nothing waiting, and nothing saved today yet.", MENU); return; }
-  if (review.length) for (const r of review.slice(0, 5)) await say(chat, `Waiting for you: ${line(r)}`, [[{ text: "Approve and save", data: "ap:" + r.id }, { text: "Cancel", data: "cx:" + r.id }]]);
+  if (review.length) for (const r of review.slice(0, 5)) await say(chat, `Waiting for you: ${line(r)}`, [[{ text: "Approve and save", data: "ap:" + r.id + ":" + r.version }, { text: "Cancel", data: "cx:" + r.id + ":" + r.version }]]);
   const parts = [];
   if (queued.length) parts.push(`<b>With Rico (${queued.length})</b>\n` + queued.map(line).join("\n"));
   if (stopped.length) parts.push(`<b>Stopped (${stopped.length})</b>, see the app\n` + stopped.map(line).join("\n"));
@@ -369,19 +369,24 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
   if (tact) return tApprove(d, chat, who, tact[1], tact[2], cb);
   if (/^(nt|tx|ta|tundo|ty|tyy|tyn|tsend|tsendok|tp:\d+|tz:\d+|ti:\d+|tu:\d+)$/.test(data)) return tButton(d, chat, who, data, cb);
   // Approve or cancel a receipt Rico filled in.
-  const act = data.match(/^(ap|apy|cx):([0-9a-f-]{36})$/);
+  const act = data.match(/^(ap|apy|cx):([0-9a-f-]{36})(?::([0-9]+))?$/);
   if (act) {
     const { data: r } = await d.from("app_rr_receipts").select("*").eq("id", act[2]).maybeSingle();
     if (!r) { await say(chat, "That receipt is no longer here."); return; }
+    const version = act[3] === undefined ? undefined : Number(act[3]);
+    if (version !== undefined && version !== r.version) {
+      await say(chat, "This receipt was updated. Open the latest photo or check it in Orders.");
+      return;
+    }
     // A receipt with anything unusual (or a big one) is asked about once more before Rico saves it.
     if (act[1] === "ap" && ((r.warnings ?? []).length || Number(r.total) >= (await helperView(await helperRow(d))).limits.bigTotal)) {
       const ws = (r.warnings ?? []).map((w: any) => "• " + (WARN[w.code]?.(w) ?? w.code)).join("\n");
       await say(chat, `Are you sure? <b>${esc(r.supplier)}</b> #${esc(r.invoice)}, ${money(Number(r.total), r.currency)}${ws ? "\n\n" + ws : ""}`,
-        [[{ text: "Yes, approve and save", data: "apy:" + r.id }, { text: "Cancel receipt", data: "cx:" + r.id }]]);
+        [[{ text: "Yes, approve and save", data: "apy:" + r.id + (version === undefined ? "" : ":" + version) }, { text: "Cancel receipt", data: "cx:" + r.id + ":" + r.version }]]);
       return;
     }
     if (act[1] === "apy") act[1] = "ap";
-    const res = act[1] === "ap" ? await approveReceipt(d, r, who) : await cancelReceipt(d, r, who);
+    const res = act[1] === "ap" ? await approveReceipt(d, r, who, version) : await cancelReceipt(d, r, who);
     await tg("editMessageReplyMarkup", { chat_id: chat, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
     await say(chat, res.error ? (res.error === "too_late" ? "Too late: Rico already saved it." : res.error === "not_waiting" ? "This receipt isn't waiting for approval any more." : "That didn't work. Try in the app.")
       : act[1] === "ap" ? `Approved. Rico is saving <b>${esc(r.supplier)}</b> #${esc(r.invoice)} now.` : `Cancelled. Rico discards it; nothing was saved.`);
@@ -544,7 +549,7 @@ async function receiptEvent(d: any, r: any, event: string) {
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url));
     const warn = (r.warnings ?? []).map((w: any) => "• " + (WARN[w.code]?.(w) ?? w.code)).join("\n");
     await say(chat, `Rico filled this in Ricotta Restaurant. Nothing is saved yet.\n\n${head}\n${(r.lines ?? []).map((l: any, i: number) => `${i + 1}. ${esc(l.item)} · ${num(l.qty, 3)} × ${esc(unitShow(l.unit))} · ${money(l.cost, r.currency)}`).join("\n")}${warn ? "\n\n" + warn : ""}`,
-      [[{ text: "Approve and save", data: "ap:" + r.id }, { text: "Cancel", data: "cx:" + r.id }]]);
+      [[{ text: "Approve and save", data: "ap:" + r.id + ":" + r.version }, { text: "Cancel", data: "cx:" + r.id + ":" + r.version }]]);
     return;
   }
   if (event === "saved") {
