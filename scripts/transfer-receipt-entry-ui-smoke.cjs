@@ -287,13 +287,15 @@ async function run(){
     await page.locator('#tfChangeTo').click();
     await page.locator('input#tfTo').waitFor();
     await page.evaluate(()=>goView('receipts'));
-    await page.locator('[data-rr-slow]').waitFor({state:'attached'});
+    const receipts = page.locator('#mainContent');
+    const slowNotice = receipts.locator('[data-rr-slow]');
+    await slowNotice.waitFor({state:'attached'});
     await page.evaluate(()=>{
       Object.defineProperty(navigator,'connection',{configurable:true,value:{effectiveType:'2g'}});
       rrPaintNetwork();
     });
-    await page.locator('[data-rr-slow]').waitFor({state:'visible'});
-    await page.locator('[data-rr-activity]').click();
+    await slowNotice.waitFor({state:'visible'});
+    await receipts.locator('[data-rr-activity]').click();
     await page.locator('.rr-activity-sheet').waitFor();
     await page.locator('.rr-watch-screen img').waitFor();
     await page.keyboard.press('Escape');
