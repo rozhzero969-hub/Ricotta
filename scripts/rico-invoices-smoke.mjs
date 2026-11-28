@@ -53,16 +53,44 @@ try {
   // 3. Invoice #3673 is present, but #367 must still be reported missing.
   f = await run({ id: "r3", supplier: "Bread House Bakery", invoice: "367" });
   assert.ok(Array.isArray(f.missing) && f.missing.includes("Purchases") && f.tab === "", "an invoice number prefix is not a match");
+  const formSource = src.slice(src.indexOf('const receiptOwnerKey ='), src.indexOf('async function fill(r, takeForm)'));
+  const discardSource = src.slice(src.indexOf('async function discard()'), src.indexOf('async function save(r, takeForm)'));
+  const ordersReceipt = {...base_, zone:'Main Storage', retry:true, previousDraftPhoto:true};
+  const dependencies = {
+    page,
+    go: async () => {},
+    flat: value => String(value).trim(),
+    requireRestaurantOrigin: url => assert.equal(new URL(url).origin, base),
+    stop: message => { throw new Error(message); },
+  };
+  const fresh = new Function(...Object.keys(dependencies), formSource + discardSource + '; return freshReceiptForm;')(...Object.values(dependencies));
+  await page.route(base + '/inventory/new-receipt', route => route.fulfill({
+    contentType:'text/html',
+    body:`<!doctype html><meta charset="utf-8"><p>Receipt details</p><p id="restored">We kept your unsaved receipt</p>
+      <button aria-label="Supplier">${ordersReceipt.supplier}</button><button aria-label="Zone">Main Storage</button>
+      <input placeholder="e.g. 1024" value="98875">
+      <button onclick="document.querySelector('#discard').hidden=false">Cancel</button>
+      <button hidden id="discard" onclick="document.querySelector('[aria-label=Supplier]').textContent='Select'; document.querySelector('input').value='';document.querySelector('#restored').hidden=true;this.hidden=true">Discard</button>`,
+  }));
+  await page.goto(base + '/inventory/new-receipt');
+  await page.locator('#discard').evaluate(button=>button.addEventListener('click', ()=>window.discarded = true));
+  await assert.rejects(fresh({...ordersReceipt,invoice:'98876'}), /could not be matched/);
+  assert.equal(await page.evaluate(()=>window.discarded),undefined,'a different invoice is left in place');
+  await assert.rejects(fresh({...ordersReceipt,retry:false}), /could not be matched/);
+  assert.equal(await (await fresh(ordersReceipt)).innerText(),'Select');
+  assert.equal(await page.evaluate(()=>window.discarded),true,'Retry discards the matching older draft before filling');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('ricotta-orders-receipt-owner')),ordersReceipt.id);
   // The receipt worker can only clear its own form, and invoice lookup is evidence after Save.
   const workSource = src.slice(src.indexOf("async function work(r) {"), src.indexOf("/* Waits (keeping the filled-in form open)"));
   class Stop extends Error {}
-  async function runWorker(status, { ownsForm = false } = {}) {
+  async function runWorker(status, { ownsForm = false, fills = false, photoReady = true } = {}) {
     const events = [];
     const dependencies = {
-      page: {}, log: () => {}, Stop, catalogNow: { at: Date.now() }, R: { check: () => ({ errors: [] }) },
-      fill: async (_r, takeForm) => { if (ownsForm) takeForm(); throw new Stop("Rico could not fill this receipt."); },
+      page: {}, log: () => {}, Stop, stop: message => { throw new Stop(message); }, catalogNow: { at: Date.now() }, R: { check: () => ({ errors: [] }) },
+      fill: async (_r, takeForm) => { if (ownsForm || fills) takeForm(); if (fills) return []; throw new Stop("Rico could not fill this receipt."); },
       save: async () => "Receipt sent", findInInvoices: async () => { throw new Error("Invoices did not load"); },
-      erbilDay: () => "2026-11-27", photo: async () => { events.push("photo"); },
+      erbilDay: () => "2026-11-27", photo: async () => { events.push("photo"); return photoReady; },
+      api: async () => ({status:"filling"}), PRACTICE: false, waitForApproval: async () => null,
       discard: async () => { events.push("discard"); }, report: async (_id, result) => { events.push(result); },
     };
     const work = new Function(...Object.keys(dependencies),
@@ -74,6 +102,11 @@ try {
   assert.deepEqual(events.map((e) => e.status), ["problem"], "a receipt opened by someone else is neither photographed nor discarded");
   events = await runWorker("filling", { ownsForm: true });
   assert.deepEqual(events.slice(0, 2), ["photo", "discard"], "Rico still cleans up the form he filled");
+  events = await runWorker("filling", {fills:true});
+  assert.equal(events[0], "photo");
+  assert.equal(events[1].status, "review", "a filled receipt sends a photo before review");
+  events = await runWorker("filling", {fills:true, photoReady:false});
+  assert.equal(events.at(-1).status, "problem", "a failed upload cannot reuse the previous approval photo");
   events = await runWorker("approved");
   assert.equal(events[0].status, "saved", "a confirmed save stays saved if invoice lookup throws");
   assert.equal(events[0].finance.checked, false);

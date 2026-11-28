@@ -3824,6 +3824,18 @@ html.rtl #tfSmartEntry{text-align:right}
 .rr-watch-popover{position:fixed;z-index:220;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 24px);
   overflow:auto;overscroll-behavior:contain;padding:12px;background:var(--surface);color:var(--ink);
   border:1px solid var(--line);border-radius:16px;box-shadow:var(--float-shadow)}
+.rr-watch-chooser{width:min(258px,calc(100vw - 24px));z-index:220}
+.rr-watch-floating{z-index:55}
+.rr-watch-floating.positioned{transition:top 240ms var(--ease-out),left 240ms var(--ease-out)}
+.rr-watch-popover{animation:rrWatchIn 180ms var(--ease-out) both}
+@keyframes rrWatchIn{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}
+.rr-watch-choice{display:grid;gap:3px;width:100%;text-align:start;margin-top:6px;padding:9px 10px;border:0;
+  border-radius:9px;background:var(--surface-2);color:var(--ink);cursor:pointer;font:inherit}
+.rr-watch-choice small{font-size:.75rem;color:var(--ink-soft)}
+.rr-watch-choice:hover,.rr-watch-choice:focus-visible{background:var(--seg-on);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.rr-watch-large .sel-panel{width:min(960px,calc(100vw - 24px));max-width:none;overflow:auto}
+.rr-watch-large .rr-watch-screen{align-self:center;width:min(100%,calc((72dvh - 104px) * 1.5))}
+@media(prefers-reduced-motion:reduce){.rr-watch-popover,.rr-watch-floating.positioned{animation:none;transition:none}}
 .rr-watch-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .rr-watch-heading strong{font-size:.9375rem}
 .rr-watch-heading button{padding:0;min-width:32px;min-height:32px;font-size:1.125rem}

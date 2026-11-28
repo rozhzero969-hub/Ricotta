@@ -1,5 +1,5 @@
 import { issueWatchTicket, verifyWatchTicket } from '../supabase/functions/_shared/rico-watch.js';
-import { helperRoute } from '../supabase/functions/api/receipts.ts';
+import { helperRoute, receiptsRoute } from '../supabase/functions/api/receipts.ts';
 import { stockView, transfersRoute } from '../supabase/functions/api/transfers.ts';
 import { recipesRoute, ricoRecipes } from '../supabase/functions/api/recipes.ts';
 import { runRecipeCategoryTool } from '../supabase/functions/api/recipe-categories.ts';
@@ -399,6 +399,34 @@ try {
   assert.deepEqual((await supplierReply.json()).suppliers, [
     {name:'Produce',items:['Cups']}, {name:'Other',items:[]}, {name:'Local Dairy',items:['Milk']},
   ]);
+  reset();
+  const receiptId = '8f9a713e-183c-470b-9e55-8ba6e7ed1ecc';
+  const wasSent = new Date(Date.now()-60000).toISOString();
+  const oldPhoto = {kind:'before', at:new Date(Date.now()-30000).toISOString()};
+  const draft = {id:receiptId, status:'review', created_by:'rozha', supplier:'Test supplier', invoice:'18',
+    zone:'Main Storage', currency:'IQD', lines:[{item:'Cups',unit:'piece',qty:2,cost:100}],
+    sent_at:wasSent, approved_at:wasSent, photos:[oldPhoto], version:3};
+  tables.app_rr_receipts=[draft];
+  tables.app_rr_catalog=[{id:true,data:{items:[{name:'Cups',base:'piece'}],suppliers:['Test supplier'],zones:['Main Storage']}}];
+  const receiptCtx = {db,account:'rozha',json:(v,status)=>Response.json(v,{status}),fail:(error,status)=>Response.json({error},{status})};
+  const receiptRequest = (action,body)=>receiptsRoute(receiptCtx,'POST',`receipts/${receiptId}/${action}`,body);
+  assert.equal((await receiptRequest('send',{retry:true,version:2})).status,409);
+  const requeued = await (await receiptRequest('send',{retry:true,version:3,confirm:[]})).json();
+  assert.equal(requeued.id,receiptId);
+  assert.equal(requeued.status,'queued');
+  assert.equal(requeued.retry,true);
+  assert.equal(requeued.previousDraftPhoto,true);
+  assert.equal(requeued.approvedAt,null);
+  assert.deepEqual(requeued.lines,draft.lines);
+  assert.deepEqual(requeued.photos,[]);
+  draft.status='filling';
+  const helperReport=(status)=>helperRoute(receiptCtx,'POST',`helper/receipts/${receiptId}/report`,{status});
+  assert.equal((await helperReport('review')).status,409,'old picture cannot advance a retry to review');
+  draft.photos.push({kind:'before',at:new Date().toISOString()});
+  const rechecked = await (await helperReport('review')).json();
+  assert.equal(rechecked.photos.length,1,'only the new photo is shown to approve');
+  assert.equal((await receiptRequest('approve',{version:3})).status,409,'approval of the old version is refused');
+  assert.equal((await receiptRequest('approve',{version:rechecked.version})).status,200);
   reset();
   const secret = 'local-test-screen-capability-secret';
   environment.RICO_HELPER_TOKEN = secret;

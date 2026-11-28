@@ -9,7 +9,7 @@
 //  - He reads every box back before saving, and checks Ricotta Restaurant's own totals against ours.
 //  - He only presses "Receive & send to finance" after the receipt is approved (by a person, or by
 //    "Rico saves by himself" in Settings). He never presses Add expense item, Return, Waste or anything
-//    that edits or deletes, and never touches a half-made receipt that was already there.
+//    that edits or deletes posted receipts, and only clears a draft linked to the same Orders receipt.
 //  - Photos before and after saving, and of the receipt in Invoices, go to Ricotta Orders.
 //  - Signed out? He signs in again (with what helper/setup.mjs saved in the Keychain) and says so.
 import { chromium } from "playwright";
@@ -21,7 +21,7 @@ import { captureWatchFrame, setupWatchCursor, startWatchServer } from "./watch.m
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-28.1";
+const VERSION = "2026-11-28.2";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -113,7 +113,7 @@ async function photo(page, id, kind, what = "receipts") {
       });
       return all.sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth)[0] || null;
     });
-    if (!(await box.evaluate((el) => !!el))) { await upload((await page.screenshot({ type: "jpeg", quality: 80, fullPage: true })).toString("base64")); return; }
+    if (!(await box.evaluate((el) => !!el))) { await upload((await page.screenshot({ type: "jpeg", quality: 80, fullPage: true })).toString("base64")); return true; }
     const height = await box.evaluate((el) => el.scrollHeight), view = await box.evaluate((el) => el.clientHeight);
     const geo = await box.evaluate((el) => ({ rectH: el.getBoundingClientRect().height, top: el.clientTop, view: el.clientHeight }));
     const step = Math.max(200, view - 60), pieces = [];
@@ -130,7 +130,8 @@ async function photo(page, id, kind, what = "receipts") {
     await box.evaluate((el) => el.scrollTo({ top: 0, behavior: "instant" }));
     try { await upload(await joinPhotos(pieces, height, geo)); }
     catch (e) { log("joining the photos failed, sending them one by one:", e.message); for (const x of pieces) await upload(x.b64); }
-  } catch (e) { log("photo failed:", e.message); }
+    return true;
+  } catch (e) { log("photo failed:", e.message); return false; }
 }
 
 /* ---------- Ricotta Restaurant ---------- */
@@ -371,13 +372,40 @@ function unitMatches(label, want) {
   const a = unitParts(label), w = unitParts(want);
   return a.name === w.name && a.factor === w.factor;
 }
-async function fill(r, takeForm) {
+const receiptOwnerKey = "ricotta-orders-receipt-owner";
+async function openReceiptForm(r) {
   await go("/inventory/new-receipt", r.id);
   await page.getByText("Receipt details").first().waitFor({ timeout: 20_000 });
-  if (await page.getByText(/We kept your unsaved receipt/i).isVisible().catch(() => false))
-    stop("Ricotta Restaurant has a half-made receipt open from before. Rico did not touch it. Finish or cancel it there, then send this again.");
   const supplierBtn = page.getByRole("button", { name: "Supplier" });
-  if (!/^\s*Select\s*$/.test(await supplierBtn.innerText())) stop("The New receipt form in Ricotta Restaurant was not empty. Rico did not touch it.");
+  const supplier = flat(await supplierBtn.innerText());
+  const invoice = flat(await page.getByPlaceholder("e.g. 1024").inputValue());
+  const restored = await page.getByText(/We kept your unsaved receipt/i).isVisible();
+  return { supplierBtn, supplier, invoice, empty: !restored && supplier === "Select" && !invoice };
+}
+async function freshReceiptForm(r) {
+  let form = await openReceiptForm(r);
+  if (!form.empty) {
+    // Old helpers did not leave an ownership marker. Their photo for this receipt, together with
+    // an exact supplier, invoice and storage match, identifies the older draft on explicit Retry.
+    const owner = await page.evaluate(key => localStorage.getItem(key), receiptOwnerKey);
+    const sameSupplier = form.supplier === flat(r.supplier);
+    const sameInvoice = form.invoice === String(r.invoice);
+    const sameStorage = flat(await page.getByRole("button", { name: "Zone" }).innerText()) === flat(r.zone);
+    const ownDraft = owner === r.id && (sameSupplier || form.supplier === "Select") &&
+      (!form.invoice || (sameSupplier && sameInvoice && sameStorage));
+    const previousDraft = !owner && r.retry && r.previousDraftPhoto && sameSupplier && sameInvoice && sameStorage;
+    if (!ownDraft && !previousDraft) {
+      stop("An unfinished receipt in Ricotta Restaurant could not be matched to this receipt. Open Rico in a separate browser window to review that form, then retry here.");
+    }
+    await discard();
+    form = await openReceiptForm(r);
+    if (!form.empty) stop("Ricotta Restaurant still shows the previous draft. Rico stopped before entering the receipt again.");
+  }
+  await page.evaluate(({key, id}) => localStorage.setItem(key, id), {key:receiptOwnerKey, id:r.id});
+  return form.supplierBtn;
+}
+async function fill(r, takeForm) {
+  const supplierBtn = await freshReceiptForm(r);
   const steps = [];
   takeForm();
   await pick(supplierBtn, r.supplier, "Supplier");
@@ -469,6 +497,8 @@ async function discard() {
   if (!/^\/inventory\/new-receipt\/?$/.test(new URL(page.url()).pathname)) return;
   await page.getByRole("button", { name: /^Cancel$/ }).last().click();
   await page.getByRole("button", { name: /^Discard$/ }).click({ timeout: 8000 });
+  requireRestaurantOrigin(page.url());
+  await page.evaluate(key => localStorage.removeItem(key), receiptOwnerKey);
 }
 
 async function save(r, takeForm) {
@@ -490,6 +520,8 @@ async function save(r, takeForm) {
   await page.getByRole("button", { name: /Receive & send to finance/ }).click();
   const banner = page.getByText(/Receipt sent/i).first();
   await banner.waitFor({ timeout: 45_000 }).catch(() => stop("Ricotta Restaurant did not say the receipt was sent. Check Invoices before doing anything."));
+  requireRestaurantOrigin(page.url());
+  await page.evaluate(key => localStorage.removeItem(key), receiptOwnerKey).catch(() => {});
   const text = (await banner.locator("xpath=..").innerText()).replace(/\s+/g, " ");
   await photo(page, r.id, "after");
   const t = R.totals(r);
@@ -841,7 +873,7 @@ async function work(r) {
         if (c.errors.length) stop(`This receipt no longer matches Ricotta Restaurant's lists (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Something was renamed or removed there. Nothing was filled in; fix the receipt and send it again.`);
       }
       const steps = await fill(r, takeForm);
-      await photo(page, r.id, "before");
+      if (!await photo(page, r.id, "before")) stop("Rico could not send a fresh photo for approval. Retry to fill the receipt and take a new photo.");
       if (PRACTICE) {
         await discard();
         await report(r.id, { status: "problem", problem: "Practice run: filled in, photographed and discarded. Nothing was saved.", log: [...steps, "Practice: discarded"] });
